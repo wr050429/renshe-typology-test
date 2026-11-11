@@ -105,7 +105,7 @@ const PP: [string, string, string, string, string][] = [
 ["e3","e7","让你做下去的动力？","拿得出手的成果","过程本身好玩"],
 ["e3","e7","一件事黄了，最让你难受的是？","丢面子","扫兴、没意思了"],
 ["e3","e8","带一个项目，你更想？","做出亮眼的成绩","按我的判断去做，结果我担"],
-["e3","e8","被人看轻时？","想证明给他看","他怎么看不影响我，我做我的"],
+["e3","e8","被你在乎的人看轻时，你更像？","最在意自己的本事没被看见，想拿出成绩让他改观","最在意他想压我一头，会直接顶回去，我的事轮不到他定"],
 ["e1","e6","你守一条规矩，是因为？","它本身是对的","守着更安全、有人护着"],
 ["e1","e6","犯了错之后？","怪自己没做到","担心后果和别人的反应"],
 ["e2","e9","帮别人的时候？","想被需要、被记住","顺手，不想闹得不愉快"],
@@ -129,7 +129,7 @@ const PP: [string, string, string, string, string][] = [
 ["e1","e6","听到一个新建议？","先看它对不对","先看它稳不稳、有没有坑"],
 ["e2","e9","朋友找你帮忙，但你很累？","还是会去，他需要我","能推就推，只是不好意思直说"],
 ["e4","e7","回想过去时？","常带着一点怀念和遗憾","多半记得好玩的部分"],
-["e4","e5","被人误解时？","很受伤，想让他懂我","无所谓，懒得解释"],
+["e4","e5","被你在乎的人误解时，最刺你的是？","连他都没看懂真正的我，想让他知道我到底是怎样的","他没把事情弄清楚就下结论，我先退开，想清楚了再说"],
 ["e1","e2","你更容易对自己不满的是？","做得不够好、不够对","对别人不够好、不够体贴"],
 ["e1","e2","别人来求助时，你更想？","教他正确的做法","直接帮他做"],
 ["e1","e2","你最受不了别人说你？","不讲原则","自私冷漠"],
@@ -219,6 +219,7 @@ function score(ans: Ans) {
 
 const MIN_N = 4;
 const GAP = 15;
+const AGES = ["18 岁以下", "18–22", "23–29", "30 及以上"];
 
 const PAPER = "#F2E9D2", PAPER2 = "#ECE1C4", WASH = "#F4DEA6", INK = "#1D2A68", MUTED = "#5A6285", DIM = "#8C7A55", SUN = "#F6C23E", WARN = "#8B3A2A", TRACK = "#E3D6B3";
 const HAIR = "rgba(29,42,104,0.22)";
@@ -391,6 +392,7 @@ export default function App() {
   const [seed, setSeed] = useState<number>(() => Math.floor(Math.random() * 1e9));
   const [ans, setAns] = useState<Ans>({});
   const [name, setName] = useState<string>("");
+  const [age, setAge] = useState<string>("");
   const [shareFlash, setShareFlash] = useState<string>("");
   const [shot, setShot] = useState<Shot | null>(null);
   const order = useMemo(() => { const r = rng(seed); return shuffle(Q, r).map((q: Item) => ({ q, opts: shuffle(q.o.map((o: [string, string], i: number) => ({ i, t: o[1] })), r) })); }, [seed]);
@@ -403,7 +405,7 @@ export default function App() {
   const timer = useRef<number | null>(null);
   const topRef = useRef<HTMLDivElement | null>(null);
   const stopTimer = (): void => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
-  const reset = (): void => { stopTimer(); setAns({}); setSeed(Math.floor(Math.random() * 1e9)); setName(""); clearCard(); setStep(0); setStage("cover"); };
+  const reset = (): void => { stopTimer(); setAns({}); setSeed(Math.floor(Math.random() * 1e9)); setName(""); setAge(""); clearCard(); setStep(0); setStage("cover"); };
 
   // MBTI headline
   const top = R.ts[0], sec = R.ts[1];
@@ -486,11 +488,18 @@ export default function App() {
   const styleShare = R.styE ? Math.round(100 * (R.fun + R.comfy) / R.styE) : 0;
   if (R.styE >= 4 && styleShare >= 50) warn.push(`社交/自由题里有 ${styleShare}% 选了「看情况」的风格项，这类场景你的答案不稳定。`);
 
+  const young = age === AGES[0] || age === AGES[1];
+  const domAuxGap = fnDone >= 20 ? Math.abs(R.f[top.s[0]] - R.f[top.s[1]]) : 0;
+  const ageBits: string[] = [];
+  if (young && fnDone >= 20 && domAuxGap < 15) ageBits.push(`你的主导 ${top.s[0]} 和辅助 ${top.s[1]} 只差 ${domAuxGap} 分`);
+  if (young && fnDone >= 20 && gapW < 8) ageBits.push(`和主辅对调的 ${twin.t} 栈分只差 ${gapW}`);
+  if (young && eMain && viaPO) ageBits.push("九型主型是靠加赛定出来的");
+  const ageNote = !young ? "" : ageBits.length ? `这个年纪功能和动机常常还在成形。${ageBits.join("；")}，请把结果当作现在的样子，而不是定论。` : "这个年纪功能和动机常常还在成形，前两位分差小、九型靠加赛定出来的话，请当作现在的样子，而不是定论。";
   const styleTxt = `更有意思 ${R.fun} 次 / 更舒服 ${R.comfy} 次`;
-  const sketch = `【人设速写】\n八维：${mbti}${locked ? "" : "（差距不足 5 分，未锁）"}\n功能轴：Ne-Si ${R.ax.NeSi.toFixed(0)}｜Ni-Se ${R.ax.NiSe.toFixed(0)}｜Ti-Fe ${R.ax.TiFe.toFixed(0)}｜Te-Fi ${R.ax.TeFi.toFixed(0)}\n九型：${mainTxt}${wingTxt ? "，翼 " + wingTxt : ""}，三元 ${tri}\n本能：${iTxt}\n风格：${styleTxt}\n${warn.length ? "提醒：" + warn.join(" ") : "无污染提醒"}`;
+  const sketch = `【人设速写】\n八维：${mbti}${locked ? "" : "（差距不足 5 分，未锁）"}\n功能轴：Ne-Si ${R.ax.NeSi.toFixed(0)}｜Ni-Se ${R.ax.NiSe.toFixed(0)}｜Ti-Fe ${R.ax.TiFe.toFixed(0)}｜Te-Fi ${R.ax.TeFi.toFixed(0)}\n九型：${mainTxt}${wingTxt ? "，翼 " + wingTxt : ""}，三元 ${tri}\n本能：${iTxt}\n风格：${styleTxt}\n${warn.length ? "提醒：" + warn.join(" ") : "无污染提醒"}${age ? `\n年龄段：${age}` : ""}${ageNote ? `\n年龄提示：${ageNote}` : ""}`;
   const axes = [{ label: "Ne–Si", value: R.ax.NeSi }, { label: "Ni–Se", value: R.ax.NiSe }, { label: "Ti–Fe", value: R.ax.TiFe }, { label: "Te–Fi", value: R.ax.TeFi }];
   const enn: Fact[] = [{ label: "主型", value: mainTxt }, { label: "翼型", value: wingTxt || "主型未锁，不判翼" }, { label: "三元", value: tri }];
-  const ins: Fact[] = [{ label: "本能堆叠", value: iTxt }, { label: "风格题", value: styleTxt }];
+  const ins: Fact[] = [{ label: "本能堆叠", value: iTxt }, { label: "风格题", value: styleTxt }, ...(age ? [{ label: "年龄段", value: age }] : [])];
 
   const sharePayload = (): ShareCard => ({ name: name.trim(), code, stack, note, axes, enn, ins, warns: warn.slice(), footer: SITE, done: R.done, total: Q.length, seed: hashStr(`${code}|${name.trim()}|${R.done}`) });
   const fileName = (): string => `人设合测-${name.trim() || (fnDone >= 20 ? top.t : "结果")}.png`;
@@ -565,6 +574,14 @@ export default function App() {
         {head("§ I", "怎么答", "modus respondendi")}
         <div style={{ fontSize: 15.5, marginTop: 10 }}>选最像你平常、而不是理想中的那个。八维题如果两个方向都不是你平时的做法，选「都不是」比硬选更合适；这类题选多了，有效样本会变窄，类型结果请当草稿。九型和本能题另有「我不知道」（不计分）和「都不是」（每个选项各扣一点）。社交、团队、自由安排类的题多两个按钮：「我做更有意思那个」「我做更让我舒服那个」，不计入功能分。本能题选完「最像」后，还可以再点一个「最不像」，用来排第二、第三。</div>
         <div style={{ fontSize: 14.5, color: MUTED, marginTop: 10, fontStyle: "italic" }}>{`一次一题，共 ${Q.length} 题；普通题选中后自动翻到下一题，本能题选完「最像」「最不像」再翻页。随时可以回到上一题改答案，答完才出结果。`}</div>
+        <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${HAIR}` }}>
+          <div style={{ fontSize: 12, letterSpacing: "0.2em", color: DIM }}>年龄段 · 可选，不计分</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+            {AGES.map((g: string) => <button type="button" key={g} onClick={() => { setAge(g); clearCard(); }} style={chip(age === g)}>{g}</button>)}
+            <button type="button" onClick={() => { setAge(""); clearCard(); }} style={chip(age === "")}>不填</button>
+          </div>
+          <div style={{ fontSize: 13, color: MUTED, marginTop: 6, fontStyle: "italic" }}>只用来在结果里加一句提醒、写在分享图上；不改分数，也不上传。</div>
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 18 }}>
           <button type="button" onClick={() => go(cur)} style={pbtn(true)}>{R.done === 0 ? "开始作答 →" : "继续作答 →"}</button>
           {R.done > 0 ? <button type="button" onClick={reset} style={pbtn(false)}>重置并重新打乱</button> : null}
@@ -669,6 +686,12 @@ export default function App() {
               <div style={{ marginTop: 20, borderTop: `1px solid ${WARN}`, paddingTop: 10, color: WARN }}>
                 <div style={{ fontSize: 12, letterSpacing: "0.22em" }}>※ 污染提醒 · CAVEAT</div>
                 {warn.map((w: string, i: number) => <div key={i} style={{ display: "flex", gap: 10, fontSize: 14.5, lineHeight: 1.6, marginTop: 6 }}><span>—</span><span style={{ flex: 1, minWidth: 0, wordBreak: "break-word" }}>{w}</span></div>)}
+              </div>
+            ) : null}
+            {ageNote ? (
+              <div style={{ marginTop: 16, borderTop: `1px solid ${HAIR}`, paddingTop: 10, color: MUTED }}>
+                <div style={{ fontSize: 12, letterSpacing: "0.22em", color: DIM }}>※ 年龄提示 · NOTA</div>
+                <div style={{ fontSize: 14.5, lineHeight: 1.6, marginTop: 6, fontStyle: "italic", wordBreak: "break-word" }}>{ageNote}</div>
               </div>
             ) : null}
             <div style={{ height: 1, background: INK, marginTop: 20 }} />
