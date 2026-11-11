@@ -1,4 +1,4 @@
-import { Page, Section, Text, Callout, Table, Bars, Properties, Button, LinkCards, useGrokTheme, useState, useMemo } from "./kit";
+import { Page, useState, useMemo, type ChangeEvent, type CSSProperties } from "./kit";
 
 type Item = { id: string; g: string; s: string; o: [string, string][]; st?: number; c?: number };
 type Ans = Record<string, number | string>;
@@ -217,33 +217,201 @@ function score(ans: Ans) {
 const MIN_N = 4;
 const GAP = 15;
 
+const PAPER = "#F2E9D2", PAPER2 = "#ECE1C4", WASH = "#F4DEA6", INK = "#1D2A68", MUTED = "#5A6285", DIM = "#8C7A55", SUN = "#F6C23E", WARN = "#8B3A2A", TRACK = "#E3D6B3";
+const HAIR = "rgba(29,42,104,0.22)";
+const SERIF = 'Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
+const SITE = "wr050429.github.io/renshe-typology-test";
+
+type Fact = { label: string; value: string };
+type ShareCard = { name: string; code: string; stack: string; note: string; axes: { label: string; value: number }[]; enn: Fact[]; ins: Fact[]; warns: string[]; footer: string; done: number; total: number; seed: number };
+
+function hashStr(s: string): number { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const lines: string[] = [];
+  text.split("\n").forEach((para: string) => {
+    if (!para) { lines.push(""); return; }
+    const toks: string[] = para.match(/[\x21-\x7e]+|\s+|[^\s\x21-\x7e]/g) || [para];
+    let line = "";
+    toks.forEach((tk: string) => {
+      const trial = line + tk;
+      if (line && ctx.measureText(trial).width > maxW) { lines.push(line.replace(/\s+$/, "")); line = tk.replace(/^\s+/, ""); } else line = trial;
+      while (line.length > 1 && ctx.measureText(line).width > maxW) { let k = line.length - 1; while (k > 1 && ctx.measureText(line.slice(0, k)).width > maxW) k--; lines.push(line.slice(0, k)); line = line.slice(k); }
+    });
+    if (line) lines.push(line);
+  });
+  return lines.length ? lines : [""];
+}
+
+function paintCard(ctx: CanvasRenderingContext2D, d: ShareCard, H: number, real: boolean): number {
+  const W = 1080, pad = 96, maxW = W - pad * 2;
+  const f = (size: number, italic?: boolean): void => { ctx.font = `${italic ? "italic " : ""}400 ${size}px ${SERIF}`; };
+  const spaced = (t: string, x: number, yy: number, sp: number, align: string): void => {
+    const chars = Array.from(t); let w = 0;
+    chars.forEach((c: string) => { w += ctx.measureText(c).width; });
+    w += sp * Math.max(0, chars.length - 1);
+    let cx = align === "left" ? x : align === "right" ? x - w : x - w / 2;
+    chars.forEach((c: string) => { ctx.fillText(c, cx, yy); cx += ctx.measureText(c).width + sp; });
+  };
+  const rule = (yy: number, lw: number): void => { ctx.fillStyle = INK; ctx.fillRect(pad, yy, maxW, lw); };
+  const cen = (t: string, yy: number): void => { ctx.fillText(t, (W - ctx.measureText(t).width) / 2, yy); };
+  const figHead = (x: number, w: number, yy: number, no: string, title: string, latin: string): void => {
+    f(16); ctx.fillStyle = INK; spaced(`${no} · ${title}`, x, yy, 4, "left");
+    f(17, true); ctx.fillStyle = DIM; ctx.fillText(latin, x + w - ctx.measureText(latin).width, yy);
+  };
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  if (real) {
+    ctx.fillStyle = PAPER; ctx.fillRect(0, 0, W, H);
+    const r = rng(d.seed);
+    const n = Math.round((W * H) / 80);
+    for (let i = 0; i < n; i++) {
+      const a = 0.025 + r() * 0.07; const s = 0.6 + r() * 1.4;
+      ctx.fillStyle = r() < 0.72 ? `rgba(140,122,85,${a.toFixed(3)})` : `rgba(29,42,104,${(a * 0.55).toFixed(3)})`;
+      ctx.fillRect(r() * W, r() * H, s, s);
+    }
+    ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.strokeRect(40, 40, W - 80, H - 80);
+    ctx.lineWidth = 0.8; ctx.strokeRect(50, 50, W - 100, H - 100);
+  }
+  let y = 84;
+  f(16); ctx.fillStyle = INK; spaced("人设类型学合测 · 轴向版", pad, y, 5, "left"); spaced("PL. I", W - pad, y, 4, "right");
+  y += 32; rule(y, 1.2);
+  y += 14; f(17, true); ctx.fillStyle = DIM; ctx.fillText("Specimen personae · 八维 × 九型 × 本能", pad, y);
+  const prog = `已答 ${d.done} / ${d.total}`; ctx.fillText(prog, W - pad - ctx.measureText(prog).width, y);
+  y += 70;
+  if (d.name) { f(36); ctx.fillStyle = MUTED; wrapText(ctx, d.name, maxW).forEach((l: string) => { cen(l, y); y += 48; }); y += 10; }
+  const code = d.code || "· · · ·";
+  let size = d.code ? (d.code.length <= 4 ? 190 : 118) : 120;
+  f(size); while (size > 40 && ctx.measureText(code).width > maxW) { size -= 4; f(size); }
+  ctx.fillStyle = d.code ? INK : DIM; cen(code, y); y += Math.round(size * 1.06);
+  if (d.stack) { f(34, true); ctx.fillStyle = MUTED; wrapText(ctx, d.stack, maxW).forEach((l: string) => { cen(l, y); y += 46; }); }
+  y += 8; f(19); ctx.fillStyle = DIM;
+  wrapText(ctx, d.note, maxW - 120).forEach((l: string) => { spaced(l, W / 2, y, 3, "center"); y += 30; });
+  y += 20; ctx.fillStyle = SUN; ctx.fillRect(W / 2 - 70, y, 140, 3); y += 46;
+  rule(y, 1.2); rule(y + 5, 0.6); y += 38;
+  figHead(pad, maxW, y, "FIG. I", "功能轴", "axes functionum"); y += 46;
+  d.axes.forEach((a: { label: string; value: number }) => {
+    f(26, true); ctx.fillStyle = INK; ctx.fillText(a.label, pad, y);
+    const val = String(Math.round(a.value)); f(26); ctx.fillText(val, W - pad - ctx.measureText(val).width, y);
+    const bx = pad + 140, bw = maxW - 140 - 76, by = y + 7, bh = 16;
+    ctx.fillStyle = TRACK; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = INK; ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, a.value / 100)), bh);
+    ctx.strokeStyle = INK; ctx.lineWidth = 0.8; ctx.strokeRect(bx, by, bw, bh);
+    ctx.fillStyle = "rgba(29,42,104,0.5)";
+    [0.25, 0.5, 0.75].forEach((t: number) => { ctx.fillRect(bx + bw * t, by - 6, 1, 6); ctx.fillRect(bx + bw * t, by + bh, 1, 6); });
+    y += 54;
+  });
+  y += 10; rule(y, 0.6); y += 36;
+  const gap = 56, colW = (maxW - gap) / 2, y0 = y;
+  const col = (x: number, yy: number, no: string, title: string, latin: string, items: Fact[]): number => {
+    figHead(x, colW, yy, no, title, latin); yy += 48;
+    items.forEach((it: Fact) => {
+      f(15); ctx.fillStyle = DIM; spaced(it.label, x, yy, 3, "left"); yy += 24;
+      f(28); ctx.fillStyle = INK; wrapText(ctx, it.value, colW).forEach((l: string) => { ctx.fillText(l, x, yy); yy += 38; });
+      yy += 14;
+    });
+    return yy;
+  };
+  const yl = col(pad, y0, "FIG. II", "九型", "enneagramma", d.enn);
+  const yr = col(pad + colW + gap, y0, "FIG. III", "本能", "instinctus", d.ins);
+  ctx.fillStyle = "rgba(29,42,104,0.35)"; ctx.fillRect(pad + colW + gap / 2, y0, 0.8, Math.max(yl, yr) - y0 - 14);
+  y = Math.max(yl, yr) + 6;
+  if (d.warns.length) {
+    rule(y, 0.6); y += 28;
+    f(16); ctx.fillStyle = WARN; spaced("※ 提醒 · CAVEAT", pad, y, 4, "left"); y += 38;
+    f(21);
+    d.warns.forEach((w: string) => { ctx.fillText("—", pad, y); wrapText(ctx, w, maxW - 32).forEach((l: string) => { ctx.fillText(l, pad + 32, y); y += 32; }); y += 8; });
+    y += 6;
+  }
+  y += 14; rule(y, 1.2); y += 20;
+  f(17, true); ctx.fillStyle = DIM; ctx.fillText(d.footer, pad, y);
+  const rt = "本图在本机生成，结果未上传"; f(16); ctx.fillText(rt, W - pad - ctx.measureText(rt).width, y);
+  return y + 100;
+}
+
+function drawResultCard(d: ShareCard): HTMLCanvasElement {
+  const scratch = document.createElement("canvas"); scratch.width = 1080; scratch.height = 200;
+  const m = scratch.getContext("2d"); if (!m) throw new Error("canvas");
+  const H = Math.ceil(paintCard(m, d, 0, false));
+  const dpr = 2; const c = document.createElement("canvas"); c.width = 1080 * dpr; c.height = H * dpr;
+  const ctx = c.getContext("2d"); if (!ctx) throw new Error("canvas");
+  ctx.scale(dpr, dpr); paintCard(ctx, d, H, true);
+  return c;
+}
+
+const opt = (sel: boolean): CSSProperties => ({ display: "block", width: "100%", boxSizing: "border-box", textAlign: "left", whiteSpace: "normal", wordBreak: "break-word", padding: "10px 14px", marginTop: 8, borderRadius: 1, border: `1px solid ${sel ? INK : "rgba(29,42,104,0.34)"}`, boxShadow: sel ? `inset 3px 0 0 ${SUN}` : "none", background: sel ? WASH : "transparent", color: INK, fontFamily: SERIF, fontSize: 15.5, lineHeight: 1.6, cursor: "pointer" });
+const chip = (sel: boolean): CSSProperties => ({ display: "inline-block", padding: "5px 10px", borderRadius: 0, border: `1px solid ${sel ? INK : HAIR}`, background: sel ? WASH : "transparent", color: sel ? INK : MUTED, fontFamily: SERIF, fontSize: 13, lineHeight: 1.45, textAlign: "left", whiteSpace: "normal", cursor: "pointer" });
+const pbtn = (primary: boolean): CSSProperties => ({ padding: "9px 16px", borderRadius: 0, border: `1px solid ${INK}`, background: primary ? INK : "transparent", color: primary ? PAPER : INK, fontFamily: SERIF, fontSize: 14.5, letterSpacing: "0.08em", cursor: "pointer" });
+const tag: CSSProperties = { fontSize: 12, letterSpacing: "0.22em", color: DIM };
+
+const head = (no: string, title: string, latin: string, cap?: string) => (
+  <div style={{ marginTop: 44 }}>
+    <div style={{ borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, height: 3 }} />
+    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "2px 16px", padding: "10px 0 4px" }}>
+      <span style={tag}>{no}</span>
+      <span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>{latin}</span>
+    </div>
+    <div style={{ fontSize: 26, lineHeight: 1.3, color: INK, letterSpacing: "0.04em" }}>{title}</div>
+    {cap ? <div style={{ fontSize: 13, color: MUTED, marginTop: 4, lineHeight: 1.6 }}>{cap}</div> : null}
+  </div>
+);
+const tbl = (cols: string[], rows: string[][], right: number) => (
+  <div style={{ overflowX: "auto", marginTop: 14 }}>
+    <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14, color: INK, fontFamily: SERIF }}>
+      <thead><tr>{cols.map((c: string, i: number) => <th key={i} style={{ textAlign: i >= right ? "right" : "left", padding: "6px 8px", fontWeight: 400, fontSize: 12, letterSpacing: "0.12em", color: DIM, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, whiteSpace: "nowrap" }}>{c}</th>)}</tr></thead>
+      <tbody>{rows.map((r: string[], j: number) => <tr key={j}>{r.map((c: string, i: number) => <td key={i} style={{ textAlign: i >= right ? "right" : "left", padding: "6px 8px", borderBottom: `1px solid ${j === rows.length - 1 ? INK : HAIR}`, fontVariantNumeric: "tabular-nums" }}>{c}</td>)}</tr>)}</tbody>
+    </table>
+  </div>
+);
+const bar = (label: string, v: number, key: string) => (
+  <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: `1px solid ${HAIR}` }}>
+    <span style={{ width: 58, flex: "0 0 auto", fontStyle: "italic", fontSize: 16 }}>{label}</span>
+    <div style={{ flex: "1 1 auto", minWidth: 0, position: "relative", height: 12, boxSizing: "border-box", background: TRACK, border: `1px solid ${INK}` }}>
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.max(0, Math.min(100, v))}%`, background: INK }} />
+      {[25, 50, 75].map((t: number) => <div key={t} style={{ position: "absolute", left: `${t}%`, top: -5, height: 4, width: 1, background: "rgba(29,42,104,0.5)" }} />)}
+    </div>
+    <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontVariantNumeric: "tabular-nums", fontSize: 15 }}>{Math.round(v)}</span>
+  </div>
+);
+const fact = (label: string, value: string) => (
+  <div key={label} style={{ padding: "8px 0", borderBottom: `1px solid ${HAIR}` }}>
+    <div style={{ fontSize: 11.5, letterSpacing: "0.2em", color: DIM }}>{label}</div>
+    <div style={{ fontSize: 18, lineHeight: 1.45, marginTop: 2, wordBreak: "break-word" }}>{value}</div>
+  </div>
+);
+
+type Shot = { url: string; blob: Blob };
+
 export default function App() {
-  const theme = useGrokTheme();
   const [seed, setSeed] = useState<number>(() => Math.floor(Math.random() * 1e9));
   const [ans, setAns] = useState<Ans>({});
+  const [name, setName] = useState<string>("");
+  const [shareFlash, setShareFlash] = useState<string>("");
+  const [shot, setShot] = useState<Shot | null>(null);
   const order = useMemo(() => { const r = rng(seed); return shuffle(Q, r).map((q: Item) => ({ q, opts: shuffle(q.o.map((o: [string, string], i: number) => ({ i, t: o[1] })), r) })); }, [seed]);
   const R = useMemo(() => score(ans), [ans]);
   const poOrder = useMemo(() => { const r = rng(seed + 7); return shuffle(PO, r).map((p: PItem) => (r() < 0.5 ? { ...p, o: [p.o[1], p.o[0]] as [string, string][] } : p)); }, [seed]);
-  const setA = (id: string, v: number | string) => { const n: Ans = { ...ans }; if (n[id] === v) delete n[id]; else n[id] = v; setAns(n); };
-  const reset = () => { setAns({}); setSeed(Math.floor(Math.random() * 1e9)); };
-
-  const card = (sel: boolean) => ({ display: "block", width: "100%", boxSizing: "border-box" as const, textAlign: "left" as const, whiteSpace: "normal" as const, wordBreak: "break-word" as const, padding: "10px 12px", marginTop: 8, borderRadius: 8, border: `1px solid ${sel ? theme.border.focus : theme.border.default}`, background: sel ? theme.fill.accentSubtle : theme.bg.base, color: theme.text.primary, fontFamily: theme.font.family, fontSize: theme.font.body2.fontSize, lineHeight: theme.font.body2.lineHeight, cursor: "pointer" });
-  const chip = (sel: boolean) => ({ padding: "6px 10px", borderRadius: 9999, border: `1px solid ${sel ? theme.border.focus : theme.border.weak}`, background: sel ? theme.fill.accentSubtle : "transparent", color: theme.text.secondary, fontFamily: theme.font.family, fontSize: theme.font.label.fontSize, cursor: "pointer", whiteSpace: "normal" as const });
+  const clearCard = (): void => { setShot((cur: Shot | null) => { if (cur) URL.revokeObjectURL(cur.url); return null; }); setShareFlash(""); };
+  const setA = (id: string, v: number | string): void => { const n: Ans = { ...ans }; if (n[id] === v) delete n[id]; else n[id] = v; setAns(n); clearCard(); };
+  const reset = (): void => { setAns({}); setSeed(Math.floor(Math.random() * 1e9)); setName(""); clearCard(); };
 
   // MBTI headline
   const top = R.ts[0], sec = R.ts[1];
   const fnDone = Q.filter((q: Item) => (q.g === "f" || q.g === "a") && typeof ans[q.id] === "number").length;
-  const gapT = Math.round((top.v - sec.v) * 10) / 10;
   const twin = R.ts.find((t: { s: string[] }) => t.s[0] === top.s[1] && t.s[1] === top.s[0]) || sec;
   const other = R.ts.slice(1).find((t: { t: string }) => t.t !== twin.t) || sec;
   const gapO = Math.round((top.v - other.v) * 10) / 10; const gapW = Math.round((top.v - twin.v) * 10) / 10;
   const locked = fnDone >= 20 && gapO >= 5 && gapW >= 3;
   const mbti = fnDone < 20 ? `八维题答了 ${fnDone}/32，先别看` : locked ? `${top.t}（${top.s.join("-")}）` : gapO >= 5 ? `${top.t} / ${twin.t} 待定（主辅先后没分开）` : `${top.t} / ${other.t} 待定`;
   const auxLow = fnDone >= 20 && R.f[top.s[1]] < 35;
+  const alt = gapO >= 5 ? twin : other;
+  const code = fnDone < 20 ? "" : locked ? top.t : `${top.t} / ${alt.t}`;
+  const stack = fnDone < 20 ? "" : locked ? top.s.join(" – ") : `${top.s.join("–")}  /  ${alt.s.join("–")}`;
+  const note = fnDone < 20 ? `八维题答了 ${fnDone}/32，先别看` : locked ? "已锁 · TYPUS FIXUS" : (gapO >= 5 ? "主辅先后还没分开，类型待定" : "与其他类型差距不足，类型待定");
 
   // Enneagram
   const eRank = EN.filter((k: string) => (R.ea[k] || 0) >= MIN_N).sort((x: string, y: string) => R.e[y] - R.e[x]);
-  const nm = (k: string) => k.slice(1);
+  const nm = (k: string): string => k.slice(1);
   const h2h = (a: string, b: string): { x: number; y: number } => { let x = 0, y = 0; PO.forEach((p: PItem) => { if (pk2(p.a, p.b) !== pk2(a, b)) return; const v = ans[p.id]; if (typeof v !== "number") return; if (p.o[v][0] === a) x++; else y++; }); return { x, y }; };
   const hw = (a: string, b: string): number => { const r = h2h(a, b); return r.x > r.y ? 1 : r.x < r.y ? -1 : 0; };
   const eDone = Q.filter((q: Item) => q.g === "e" && ans[q.id] !== undefined).length;
@@ -263,9 +431,9 @@ export default function App() {
   if (eMain) { const n = +nm(eMain); const l = `e${n === 1 ? 9 : n - 1}`, r = `e${n === 9 ? 1 : n + 1}`; const d = wr(l, eMain) - wr(r, eMain); wingTxt = Math.abs(d) >= GAP ? `${n}w${nm(d > 0 ? l : r)}` : (ready && addPair(l, r) && hw(l, r) !== 0) ? `${n}w${nm(hw(l, r) > 0 ? l : r)}（加赛）` : `${n}w?（${nm(l)} 和 ${nm(r)} 差不到 ${GAP}）`; }
   const centers = [["e8", "e9", "e1"], ["e2", "e3", "e4"], ["e5", "e6", "e7"]];
   const triParts = centers.map((c: string[]) => { const s = c.slice().sort((x: string, y: string) => R.e[y] - R.e[x]); if (eMain && c.includes(eMain)) return { k: eMain, v: 1000, lock: true, alt: eMain };
-    let k = s[0], alt = s[1], lock = R.e[s[0]] - R.e[s[1]] >= GAP;
-    if (!lock && ready) { addPair(s[0], s[1]); const w = hw(s[0], s[1]); if (w !== 0) { lock = true; if (w < 0) { k = s[1]; alt = s[0]; } } }
-    return { k, v: R.e[k], lock, alt }; }).sort((x: { v: number }, y: { v: number }) => y.v - x.v);
+    let k = s[0], alt2 = s[1], lock = R.e[s[0]] - R.e[s[1]] >= GAP;
+    if (!lock && ready) { addPair(s[0], s[1]); const w = hw(s[0], s[1]); if (w !== 0) { lock = true; if (w < 0) { k = s[1]; alt2 = s[0]; } } }
+    return { k, v: R.e[k], lock, alt: alt2 }; }).sort((x: { v: number }, y: { v: number }) => y.v - x.v);
   const tri = triParts.map((p: { k: string; lock: boolean; alt: string }) => p.lock ? nm(p.k) : `(${nm(p.k)}/${nm(p.alt)})`).join("");
 
   // Instinct
@@ -286,97 +454,226 @@ export default function App() {
   const styleShare = R.styE ? Math.round(100 * (R.fun + R.comfy) / R.styE) : 0;
   if (R.styE >= 4 && styleShare >= 50) warn.push(`社交/自由题里有 ${styleShare}% 选了「看情况」的风格项，这类场景你的答案不稳定。`);
 
-  const sketch = `【人设速写】\n八维：${mbti}${locked ? "" : "（差距不足 5 分，未锁）"}\n功能轴：Ne-Si ${R.ax.NeSi.toFixed(0)}｜Ni-Se ${R.ax.NiSe.toFixed(0)}｜Ti-Fe ${R.ax.TiFe.toFixed(0)}｜Te-Fi ${R.ax.TeFi.toFixed(0)}\n九型：${mainTxt}${wingTxt ? "，翼 " + wingTxt : ""}，三元 ${tri}\n本能：${iTxt}\n风格：更有意思 ${R.fun} 次 / 更舒服 ${R.comfy} 次\n${warn.length ? "提醒：" + warn.join(" ") : "无污染提醒"}`;
+  const styleTxt = `更有意思 ${R.fun} 次 / 更舒服 ${R.comfy} 次`;
+  const sketch = `【人设速写】\n八维：${mbti}${locked ? "" : "（差距不足 5 分，未锁）"}\n功能轴：Ne-Si ${R.ax.NeSi.toFixed(0)}｜Ni-Se ${R.ax.NiSe.toFixed(0)}｜Ti-Fe ${R.ax.TiFe.toFixed(0)}｜Te-Fi ${R.ax.TeFi.toFixed(0)}\n九型：${mainTxt}${wingTxt ? "，翼 " + wingTxt : ""}，三元 ${tri}\n本能：${iTxt}\n风格：${styleTxt}\n${warn.length ? "提醒：" + warn.join(" ") : "无污染提醒"}`;
+  const axes = [{ label: "Ne–Si", value: R.ax.NeSi }, { label: "Ni–Se", value: R.ax.NiSe }, { label: "Ti–Fe", value: R.ax.TiFe }, { label: "Te–Fi", value: R.ax.TeFi }];
+  const enn: Fact[] = [{ label: "主型", value: mainTxt }, { label: "翼型", value: wingTxt || "主型未锁，不判翼" }, { label: "三元", value: tri }];
+  const ins: Fact[] = [{ label: "本能堆叠", value: iTxt }, { label: "风格题", value: styleTxt }];
+
+  const sharePayload = (): ShareCard => ({ name: name.trim(), code, stack, note, axes, enn, ins, warns: warn.slice(), footer: SITE, done: R.done, total: Q.length, seed: hashStr(`${code}|${name.trim()}|${R.done}`) });
+  const fileName = (): string => `人设合测-${name.trim() || (fnDone >= 20 ? top.t : "结果")}.png`;
+  const generateCard = (): void => {
+    if (R.done < 1) { setShareFlash("先答几题再生成"); return; }
+    try {
+      const drawn = drawResultCard(sharePayload());
+      drawn.toBlob((blob: Blob | null) => {
+        if (!blob) { setShareFlash("生成图片失败"); return; }
+        const url = URL.createObjectURL(blob);
+        setShot((cur: Shot | null) => { if (cur) URL.revokeObjectURL(cur.url); return { url, blob }; });
+        setShareFlash("图已生成。下载不了时，长按或右键保存下面的图。");
+      }, "image/png");
+    } catch {
+      setShareFlash("这个环境不能生成图片");
+    }
+  };
+  const downloadCard = (): void => {
+    if (!shot) return;
+    try {
+      const a = document.createElement("a");
+      a.href = shot.url;
+      a.download = fileName();
+      a.click();
+    } catch {
+      setShareFlash("这个环境不能下载，请长按或右键保存下面的图");
+    }
+  };
+  const shareImage = (): void => {
+    if (!shot) return;
+    const nav = navigator as unknown as { share?: (d: { files: File[]; title: string; text: string }) => Promise<void>; canShare?: (d: { files: File[] }) => boolean };
+    const go = async (): Promise<void> => {
+      try {
+        const file = new File([shot.blob], fileName(), { type: "image/png" });
+        if (nav.share && (!nav.canShare || nav.canShare({ files: [file] }))) {
+          await nav.share({ files: [file], title: name.trim() ? `人设合测 · ${name.trim()}` : "人设类型学合测", text: sketch });
+          return;
+        }
+      } catch (err: unknown) {
+        const aborted = typeof err === "object" && err !== null && "name" in err && (err as { name: string }).name === "AbortError";
+        if (aborted) return;
+      }
+      downloadCard();
+    };
+    void go();
+  };
+
+  const pct = Math.round((100 * R.done) / Q.length);
+  const qText: CSSProperties = { color: INK, fontSize: 17, lineHeight: 1.6, marginTop: 4, wordBreak: "break-word" };
+  const qBox: CSSProperties = { padding: "18px 0 16px", borderBottom: `1px solid ${HAIR}` };
+  const romanN = (n: number): string => { const m: [number, string][] = [[50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]]; let s = ""; let v = n; m.forEach((p: [number, string]) => { while (v >= p[0]) { s += p[1]; v -= p[0]; } }); return s; };
 
   return (
-    <Page title="人设类型学合测 · 轴向版" lang="zh-Hans" summary={`同一场景、几个方向正面竞争：八维按功能轴和主导方向排栈，九型和本能按动机三选一、按选中率计分。共 ${Q.length} 题，每次打开和重置都会打乱题目和选项顺序。`}>
-      <Section heading="怎么答">
-        <Text>选最像你平常、而不是理想中的那个。九型和本能题另有「我不知道」（不计分）和「都不是」（三个方向各扣一点）。社交、团队、自由安排类的题多两个按钮：「我做更有意思那个」「我做更让我舒服那个」，不计入功能分。本能题选完「最像」后，还可以再点一个「最不像」，用来排第二、第三。</Text>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <Button label="重置并重新打乱" onClick={reset} />
-          <span style={{ color: theme.text.secondary, fontSize: theme.font.label.fontSize }}>{`已答 ${R.done}/${Q.length}`}</span>
+    <Page title="人设类型学合测 · 轴向版" lang="zh-Hans" width="column" summary={`八维按功能轴和主导方向排栈，九型和本能按动机三选一、按选中率计分。共 ${Q.length} 题，测完可生成一张结果分享图。`}>
+      <div style={{ background: PAPER, color: INK, fontFamily: SERIF, border: `1px solid ${INK}`, boxShadow: `inset 0 0 0 6px ${PAPER}, inset 0 0 0 7px rgba(29,42,104,0.45)`, padding: "26px clamp(16px, 5vw, 44px) 34px", maxWidth: 800, margin: "0 auto", boxSizing: "border-box", lineHeight: 1.6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "4px 16px" }}>
+          <span style={{ fontSize: 12.5, letterSpacing: "0.26em" }}>人设类型学合测 · 轴向版</span>
+          <span style={{ fontSize: 12.5, letterSpacing: "0.18em" }}>{`已答 ${R.done}/${Q.length}`}</span>
         </div>
-      </Section>
-      <Section heading="题目">
+        <div style={{ marginTop: 8, height: 1, background: INK }} />
+        <div style={{ height: 2, background: "rgba(29,42,104,0.08)" }}><div style={{ width: `${pct}%`, height: 2, background: SUN }} /></div>
+
+        <div style={{ padding: "34px 0 6px" }}>
+          <div style={tag}>TYPOLOGIA · EDITIO AXIALIS · Nº 01</div>
+          <div style={{ fontSize: "clamp(40px, 9vw, 66px)", lineHeight: 1.08, marginTop: 14, letterSpacing: "0.02em" }}>人设类型学合测</div>
+          <div style={{ fontSize: "clamp(22px, 4.6vw, 32px)", fontStyle: "italic", lineHeight: 1.25, color: MUTED, marginTop: 6 }}>Specimen personae, axibus ordinatum</div>
+          <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${HAIR}`, fontSize: 15.5, color: INK }}>{`同一场景、几个方向正面竞争：八维按功能轴和主导方向排栈，九型和本能按动机三选一、按选中率计分。共 ${Q.length} 题，每次重置都会打乱题目和选项顺序。测完后可以生成结果分享图。`}</div>
+        </div>
+
+        {head("§ I", "怎么答", "modus respondendi")}
+        <div style={{ fontSize: 15.5, marginTop: 10 }}>选最像你平常、而不是理想中的那个。九型和本能题另有「我不知道」（不计分）和「都不是」（三个方向各扣一点）。社交、团队、自由安排类的题多两个按钮：「我做更有意思那个」「我做更让我舒服那个」，不计入功能分。本能题选完「最像」后，还可以再点一个「最不像」，用来排第二、第三。</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 14 }}>
+          <button type="button" onClick={reset} style={pbtn(false)}>重置并重新打乱</button>
+          <span style={{ color: MUTED, fontSize: 13, fontStyle: "italic" }}>{`已答 ${R.done} / ${Q.length}`}</span>
+        </div>
+
+        {head("§ II", "题目", "quaestiones")}
         {order.map((row: { q: Item; opts: { i: number; t: string }[] }, n: number) => {
           const q = row.q; const a = ans[q.id]; const three = q.g === "e" || q.g === "i";
           return (
-            <div key={q.id} style={{ padding: "14px 0", borderBottom: `1px solid ${theme.border.subtle}` }}>
-              <div style={{ color: theme.text.tertiary, fontSize: theme.font.label.fontSize }}>{`${n + 1} · ${GL[q.g]}`}</div>
-              <div style={{ color: theme.text.primary, fontSize: theme.font.body1.fontSize, lineHeight: theme.font.body1.lineHeight, marginTop: 4, wordBreak: "break-word" }}>{q.s}</div>
-              {row.opts.map((op: { i: number; t: string }) => (
-                <div key={op.i} role="button" onClick={() => setA(q.id, op.i)} style={card(a === op.i)}>{op.t}</div>
+            <div key={q.id} style={qBox}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "baseline" }}>
+                <span style={{ fontStyle: "italic", fontSize: 15, color: DIM }}>{`No. ${n + 1}`}</span>
+                <span style={{ fontSize: 11.5, letterSpacing: "0.22em", color: DIM }}>{GL[q.g]}</span>
+              </div>
+              <div style={qText}>{q.s}</div>
+              {row.opts.map((op: { i: number; t: string }, j: number) => (
+                <button type="button" key={op.i} onClick={() => setA(q.id, op.i)} style={opt(a === op.i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"abcd"[j]}.`}</span>{op.t}</button>
               ))}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                {q.st ? <span role="button" onClick={() => setA(q.id, "fun")} style={chip(a === "fun")}>我做更有意思那个</span> : null}
-                {q.st ? <span role="button" onClick={() => setA(q.id, "comfy")} style={chip(a === "comfy")}>我做更让我舒服那个</span> : null}
-                {three ? <span role="button" onClick={() => setA(q.id, "idk")} style={chip(a === "idk")}>我不知道</span> : null}
-                {q.g === "i" && typeof a === "number" ? row.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }) => <span key={"l" + op.i} role="button" onClick={() => setA(q.id + "_l", op.i)} style={chip(ans[q.id + "_l"] === op.i)}>{`最不像：${op.t}`}</span>) : null}
-                <span role="button" onClick={() => setA(q.id, "none")} style={chip(a === "none")}>都不是</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                {q.st ? <button type="button" onClick={() => setA(q.id, "fun")} style={chip(a === "fun")}>我做更有意思那个</button> : null}
+                {q.st ? <button type="button" onClick={() => setA(q.id, "comfy")} style={chip(a === "comfy")}>我做更让我舒服那个</button> : null}
+                {three ? <button type="button" onClick={() => setA(q.id, "idk")} style={chip(a === "idk")}>我不知道</button> : null}
+                {q.g === "i" && typeof a === "number" ? row.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }) => <button type="button" key={"l" + op.i} onClick={() => setA(q.id + "_l", op.i)} style={chip(ans[q.id + "_l"] === op.i)}>{`最不像：${op.t}`}</button>) : null}
+                <button type="button" onClick={() => setA(q.id, "none")} style={chip(a === "none")}>都不是</button>
               </div>
             </div>
           );
         })}
-      </Section>
-      {needPairs.length > 0 ? (
-        <Section heading="九型加赛" caption="只在分数差不到 15 时出现；只用来分胜负，不改上面的选中率">
-          {poOrder.filter((p: PItem) => needPairs.includes(pk2(p.a, p.b))).map((p: PItem, n: number) => {
-            const a = ans[p.id];
-            return (
-              <div key={p.id} style={{ padding: "14px 0", borderBottom: `1px solid ${theme.border.subtle}` }}>
-                <div style={{ color: theme.text.tertiary, fontSize: theme.font.label.fontSize }}>{`加赛 ${n + 1}`}</div>
-                <div style={{ color: theme.text.primary, fontSize: theme.font.body1.fontSize, lineHeight: theme.font.body1.lineHeight, marginTop: 4, wordBreak: "break-word" }}>{p.s}</div>
-                {p.o.map((o: [string, string], i: number) => (
-                  <div key={i} role="button" onClick={() => setA(p.id, i)} style={card(a === i)}>{o[1]}</div>
-                ))}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                  <span role="button" onClick={() => setA(p.id, "none")} style={chip(a === "none")}>都不像</span>
+
+        {needPairs.length > 0 ? (
+          <div>
+            {head("§ III", "九型加赛", "certamen decretorium", "只在分数差不到 15 时出现；只用来分胜负，不改上面的选中率")}
+            {poOrder.filter((p: PItem) => needPairs.includes(pk2(p.a, p.b))).map((p: PItem, n: number) => {
+              const a = ans[p.id];
+              return (
+                <div key={p.id} style={qBox}>
+                  <span style={{ fontStyle: "italic", fontSize: 15, color: DIM }}>{`加赛 ${romanN(n + 1)}`}</span>
+                  <div style={qText}>{p.s}</div>
+                  {p.o.map((o: [string, string], i: number) => (
+                    <button type="button" key={i} onClick={() => setA(p.id, i)} style={opt(a === i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"ab"[i]}.`}</span>{o[1]}</button>
+                  ))}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                    <button type="button" onClick={() => setA(p.id, "none")} style={chip(a === "none")}>都不像</button>
+                  </div>
                 </div>
+              );
+            })}
+            {tbl(["对局", "比分", "胜方"], needPairs.map((k: string) => { const [a, b] = k.split("-"); const r = h2h(a, b); return [`${nm(a)} 对 ${nm(b)}`, `${r.x} : ${r.y}`, r.x === r.y ? "平" : `${nm(r.x > r.y ? a : b)} 号`]; }), 1)}
+          </div>
+        ) : null}
+
+        {head("PL. I", "结果标本", "specimen")}
+        <div style={{ marginTop: 16, border: `1px solid ${INK}`, padding: 5 }}>
+          <div style={{ border: `1px solid rgba(29,42,104,0.45)`, padding: "18px clamp(14px, 4vw, 32px) 22px", background: PAPER }}>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", fontSize: 11.5, letterSpacing: "0.22em" }}>
+              <span>人设类型学合测 · 轴向版</span><span>PL. I</span>
+            </div>
+            <div style={{ height: 1, background: INK, marginTop: 6 }} />
+            {name.trim() ? <div style={{ textAlign: "center", fontSize: 21, color: MUTED, marginTop: 22, wordBreak: "break-word" }}>{name.trim()}</div> : null}
+            <div style={{ textAlign: "center", fontSize: code.length > 4 ? "clamp(38px, 10vw, 68px)" : "clamp(60px, 16vw, 116px)", lineHeight: 1.05, letterSpacing: "0.03em", marginTop: name.trim() ? 6 : 26, color: code ? INK : DIM, wordBreak: "break-word" }}>{code || "· · · ·"}</div>
+            {stack ? <div style={{ textAlign: "center", fontStyle: "italic", fontSize: 19, color: MUTED, marginTop: 6 }}>{stack}</div> : null}
+            <div style={{ textAlign: "center", fontSize: 12, letterSpacing: "0.2em", color: DIM, marginTop: 8 }}>{note}</div>
+            <div style={{ width: 96, height: 2, background: SUN, margin: "16px auto 0" }} />
+            <div style={{ marginTop: 22, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, height: 3 }} />
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", marginTop: 14 }}>
+              <span style={{ fontSize: 12, letterSpacing: "0.2em" }}>FIG. I · 功能轴</span><span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>axes functionum</span>
+            </div>
+            <div style={{ marginTop: 4 }}>{axes.map((x: { label: string; value: number }) => bar(x.label, x.value, x.label))}</div>
+            <div style={{ fontSize: 13, color: MUTED, marginTop: 8, lineHeight: 1.6 }}>{`八维：${mbti}（领先其他类型 ${gapO} 分、领先内外向孪生 ${gapW} 分；${locked ? "已锁" : "要求 5 分和 3 分"}）`}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 28px", marginTop: 18 }}>
+              <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", paddingBottom: 4, borderBottom: `1px solid ${INK}` }}>
+                  <span style={{ fontSize: 12, letterSpacing: "0.2em" }}>FIG. II · 九型</span><span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>enneagramma</span>
+                </div>
+                {enn.map((x: Fact) => fact(x.label, x.value))}
               </div>
-            );
-          })}
-          <Table columns={["对局", "比分", "胜方"]} rows={needPairs.map((k: string) => { const [a, b] = k.split("-"); const r = h2h(a, b); return [`${nm(a)} 对 ${nm(b)}`, `${r.x} : ${r.y}`, r.x === r.y ? "平" : `${nm(r.x > r.y ? a : b)} 号`]; })} align={["start", "end", "end"]} />
-        </Section>
-      ) : null}
-      <Section heading="结果">
-        <Properties items={[
-          { label: "八维", value: `${mbti}（领先其他类型 ${gapO} 分、领先内外向孪生 ${gapW} 分；${locked ? "已锁" : "要求 5 分和 3 分"}）` },
-          { label: "九型主型", value: mainTxt },
-          { label: "翼型", value: wingTxt || "主型未锁，不判翼" },
-          { label: "三元组", value: tri },
-          { label: "本能堆叠", value: iTxt },
-        ]} />
-      </Section>
-      {warn.length > 0 ? (
-        <Section heading="污染提醒">
-          <Callout tone="warning">{warn.join(" ")}</Callout>
-        </Section>
-      ) : null}
-      <Section heading="栈的候选" caption="栈分 = 主导 40% + 辅助 30% + 第三 10% + 劣势 3% + 轴 9% + 方向题 11%；主导或辅助低于 15 的栈打 6 折">
-        <Table columns={["类型", "栈", "栈分"]} rows={R.ts.slice(0, 5).map((t: { t: string; s: string[]; v: number }) => [t.t, t.s.join("-"), String(t.v)])} align={["start", "start", "end"]} />
-      </Section>
-      <Section heading="八维选中率">
-        <Bars bars={FN.slice().sort((x: string, y: string) => R.f[y] - R.f[x]).map((k: string) => ({ label: k, value: R.f[k], display: `${R.f[k]}` }))} />
-        <Table columns={["功能轴", "轴分"]} rows={Object.keys(R.ax).map((k: string) => [AXN[k], R.ax[k].toFixed(0)])} align={["start", "end"]} />
-      </Section>
-      <Section heading="九型选中率" caption="分 = 100 × (选中 − 0.25 × 都不是) ÷ 有效出现；有效出现 = 出现 − 不知道；有效出现少于 4 的型不排名">
-        <Table columns={["型", "分", "选中", "都不是", "不知道", "出现"]} rows={EN.slice().sort((x: string, y: string) => R.e[y] - R.e[x]).map((k: string) => [`${nm(k)} 号`, String(R.e[k]), String(R.es[k] || 0), String(R.en[k] || 0), String(R.ek[k] || 0), String((R.ea[k] || 0) + (R.ek[k] || 0))])} align={["start", "end", "end", "end", "end", "end"]} />
-      </Section>
-      <Section heading="本能选中率">
-        <Table columns={["本能", "分", "最像", "最不像", "都不是", "不知道", "出现"]} rows={iS.map((k: string) => [k, String(R.i[k]), String(R.is[k] || 0), String(R.il[k] || 0), String(R.inn[k] || 0), String(R.ik[k] || 0), String((R.ia[k] || 0) + (R.ik[k] || 0))])} align={["start", "end", "end", "end", "end", "end", "end"]} />
-      </Section>
-      <Section heading="角色人设速写" caption="可直接复制">
-        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: theme.font.mono, fontSize: theme.font.code.fontSize, color: theme.text.primary, padding: 12, border: `1px solid ${theme.border.default}`, borderRadius: 8, userSelect: "all" }}>{sketch}</div>
-      </Section>
-      <Section heading="出题参考">
-        <LinkCards links={[
-          { title: "Sakinorva 认知功能测试（轴向算法）", site: "sakinorva.net", href: "https://sakinorva.net/functions" },
-          { title: "IDRlabs 认知功能测试", site: "idrlabs.com", href: "https://www.idrlabs.com/cognitive-function/test.php" },
-          { title: "Sakinorva 与 Keys2Cognition 的效度对比", site: "typologytriad.wordpress.com", href: "https://typologytriad.wordpress.com/2020/06/16/tcf-series-part-2-evaluating-sakinorva-and-keys2cognition-test/" },
-          { title: "RHETI：成对强迫选择", site: "enneagraminstitute.com", href: "https://www.enneagraminstitute.com/rheti/" },
-          { title: "IVQ：三选一本能问卷", site: "enneagraminstitute.com", href: "https://www.enneagraminstitute.com/ivq/" },
-        ]} />
-      </Section>
+              <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", paddingBottom: 4, borderBottom: `1px solid ${INK}` }}>
+                  <span style={{ fontSize: 12, letterSpacing: "0.2em" }}>FIG. III · 本能</span><span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>instinctus</span>
+                </div>
+                {ins.map((x: Fact) => fact(x.label, x.value))}
+              </div>
+            </div>
+            {warn.length > 0 ? (
+              <div style={{ marginTop: 20, borderTop: `1px solid ${WARN}`, paddingTop: 10, color: WARN }}>
+                <div style={{ fontSize: 12, letterSpacing: "0.22em" }}>※ 污染提醒 · CAVEAT</div>
+                {warn.map((w: string, i: number) => <div key={i} style={{ display: "flex", gap: 10, fontSize: 14.5, lineHeight: 1.6, marginTop: 6 }}><span>—</span><span style={{ flex: 1, minWidth: 0, wordBreak: "break-word" }}>{w}</span></div>)}
+              </div>
+            ) : null}
+            <div style={{ height: 1, background: INK, marginTop: 20 }} />
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", marginTop: 8, fontSize: 12.5, color: DIM }}>
+              <span style={{ fontStyle: "italic" }}>{SITE}</span><span>结果只在本机计算，不上传</span>
+            </div>
+          </div>
+        </div>
+
+        {head("§ IV", "分享图", "imago communicanda", "结果不会存到网上。生成一张图后，可以下载或发给别人；想写角色名的话，会出现在图上。")}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 14 }}>
+          <input value={name} onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)} placeholder="角色名（可选）" aria-label="角色名" style={{ flex: "1 1 180px", minWidth: 0, padding: "8px 2px", border: "none", borderBottom: `1px solid ${INK}`, borderRadius: 0, background: "transparent", color: INK, fontFamily: SERIF, fontSize: 16, outline: "none" }} />
+          <button type="button" onClick={generateCard} style={pbtn(true)}>生成分享图</button>
+          {shot ? <button type="button" onClick={downloadCard} style={pbtn(false)}>下载图片</button> : null}
+          {shot ? <button type="button" onClick={shareImage} style={pbtn(false)}>分享</button> : null}
+        </div>
+        {shareFlash ? <div style={{ color: shareFlash.startsWith("图已") ? MUTED : WARN, fontSize: 13, marginTop: 8, wordBreak: "break-word" }}>{shareFlash}</div> : null}
+        {shot ? <img src={shot.url} alt="测试结果分享图" style={{ display: "block", width: "100%", height: "auto", marginTop: 14, border: `1px solid ${INK}` }} /> : null}
+
+        {head("附录 A", "栈的候选", "stirpes candidatae", "栈分 = 主导 40% + 辅助 30% + 第三 10% + 劣势 3% + 轴 9% + 方向题 11%；主导或辅助低于 15 的栈打 6 折")}
+        {tbl(["类型", "栈", "栈分"], R.ts.slice(0, 5).map((t: { t: string; s: string[]; v: number }) => [t.t, t.s.join("-"), String(t.v)]), 2)}
+
+        {head("附录 B", "八维选中率", "functiones octo")}
+        <div style={{ marginTop: 8 }}>{FN.slice().sort((x: string, y: string) => R.f[y] - R.f[x]).map((k: string) => bar(k, R.f[k], k))}</div>
+        {tbl(["功能轴", "轴分"], Object.keys(R.ax).map((k: string) => [AXN[k], R.ax[k].toFixed(0)]), 1)}
+
+        {head("附录 C", "九型选中率", "enneagramma", "分 = 100 × (选中 − 0.25 × 都不是) ÷ 有效出现；有效出现 = 出现 − 不知道；有效出现少于 4 的型不排名")}
+        {tbl(["型", "分", "选中", "都不是", "不知道", "出现"], EN.slice().sort((x: string, y: string) => R.e[y] - R.e[x]).map((k: string) => [`${nm(k)} 号`, String(R.e[k]), String(R.es[k] || 0), String(R.en[k] || 0), String(R.ek[k] || 0), String((R.ea[k] || 0) + (R.ek[k] || 0))]), 1)}
+
+        {head("附录 D", "本能选中率", "instinctus")}
+        {tbl(["本能", "分", "最像", "最不像", "都不是", "不知道", "出现"], iS.map((k: string) => [k, String(R.i[k]), String(R.is[k] || 0), String(R.il[k] || 0), String(R.inn[k] || 0), String(R.ik[k] || 0), String((R.ia[k] || 0) + (R.ik[k] || 0))]), 1)}
+
+        {head("附录 E", "角色人设速写", "adumbratio", "可直接复制")}
+        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: SERIF, fontSize: 14.5, lineHeight: 1.7, color: INK, padding: "12px 14px", marginTop: 12, border: `1px solid ${INK}`, background: PAPER2, userSelect: "all" }}>{sketch}</div>
+
+        {head("附录 F", "出题参考", "fontes")}
+        <div style={{ marginTop: 8 }}>
+          {[
+            { title: "Sakinorva 认知功能测试（轴向算法）", site: "sakinorva.net", href: "https://sakinorva.net/functions" },
+            { title: "IDRlabs 认知功能测试", site: "idrlabs.com", href: "https://www.idrlabs.com/cognitive-function/test.php" },
+            { title: "Sakinorva 与 Keys2Cognition 的效度对比", site: "typologytriad.wordpress.com", href: "https://typologytriad.wordpress.com/2020/06/16/tcf-series-part-2-evaluating-sakinorva-and-keys2cognition-test/" },
+            { title: "RHETI：成对强迫选择", site: "enneagraminstitute.com", href: "https://www.enneagraminstitute.com/rheti/" },
+            { title: "IVQ：三选一本能问卷", site: "enneagraminstitute.com", href: "https://www.enneagraminstitute.com/ivq/" },
+          ].map((l: { title: string; site: string; href: string }, i: number) => (
+            <a key={l.href} href={l.href} target="_blank" rel="noreferrer" style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "baseline", padding: "9px 0", borderBottom: `1px solid ${HAIR}`, color: INK, textDecoration: "none" }}>
+              <span style={{ fontStyle: "italic", color: DIM, fontSize: 14 }}>{`${i + 1}.`}</span>
+              <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 15, borderBottom: `1px solid rgba(29,42,104,0.35)` }}>{l.title}</span>
+              <span style={{ fontStyle: "italic", color: DIM, fontSize: 13 }}>{l.site}</span>
+            </a>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 40, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, height: 3 }} />
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", marginTop: 10, fontSize: 12, letterSpacing: "0.16em", color: DIM }}>
+          <span>{SITE}</span><span>不保存 · 不上传</span>
+        </div>
+      </div>
     </Page>
   );
 }
