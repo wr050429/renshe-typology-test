@@ -540,7 +540,7 @@ export default function App() {
   const romanN = (n: number): string => { const m: [number, string][] = [[50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]]; let s = ""; let v = n; m.forEach((p: [number, string]) => { while (v >= p[0]) { s += p[1]; v -= p[0]; } }); return s; };
 
   return (
-    <Page title="人设类型学合测 · 轴向版" lang="zh-Hans" width="column" summary={`八维按功能轴和主导方向排栈，九型和本能按动机三选一、按选中率计分。共 ${Q.length} 题，测完可生成一张结果分享图。`}>
+    <Page title="人设类型学合测 · 轴向版" lang="zh-Hans" width="column" summary={`八维按功能轴和主导方向排栈，九型和本能按动机选最像的一项、按选中率计分。共 ${Q.length} 题，测完可生成一张结果分享图。`}>
       <div ref={topRef} style={{ background: PAPER, color: INK, fontFamily: SERIF, border: `1px solid ${INK}`, boxShadow: `inset 0 0 0 6px ${PAPER}, inset 0 0 0 7px rgba(29,42,104,0.45)`, padding: "26px clamp(16px, 5vw, 44px) 34px", maxWidth: 800, margin: "0 auto", boxSizing: "border-box", lineHeight: 1.6 }}>
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "4px 16px" }}>
           <span style={{ fontSize: 12.5, letterSpacing: "0.26em" }}>人设类型学合测 · 轴向版</span>
@@ -555,11 +555,11 @@ export default function App() {
           <div style={tag}>TYPOLOGIA · EDITIO AXIALIS · Nº 01</div>
           <div style={{ fontSize: "clamp(40px, 9vw, 66px)", lineHeight: 1.08, marginTop: 14, letterSpacing: "0.02em" }}>人设类型学合测</div>
           <div style={{ fontSize: "clamp(22px, 4.6vw, 32px)", fontStyle: "italic", lineHeight: 1.25, color: MUTED, marginTop: 6 }}>Specimen personae, axibus ordinatum</div>
-          <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${HAIR}`, fontSize: 15.5, color: INK }}>{`同一场景、几个方向正面竞争：八维按功能轴和主导方向排栈，九型和本能按动机三选一、按选中率计分。共 ${Q.length} 题，每次重置都会打乱题目和选项顺序。测完后可以生成结果分享图。`}</div>
+          <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${HAIR}`, fontSize: 15.5, color: INK }}>{`同一场景、几个方向正面竞争：八维按功能轴和主导方向排栈，九型和本能按动机选最像的一项、按选中率计分。共 ${Q.length} 题，每次重置都会打乱题目和选项顺序。测完后可以生成结果分享图。`}</div>
         </div>
 
         {head("§ I", "怎么答", "modus respondendi")}
-        <div style={{ fontSize: 15.5, marginTop: 10 }}>选最像你平常、而不是理想中的那个。八维题如果两个方向都不是你平时的做法，选「都不是」比硬选更合适；这类题选多了，有效样本会变窄，类型结果请当草稿。九型和本能题另有「我不知道」（不计分）和「都不是」（三个方向各扣一点）。社交、团队、自由安排类的题多两个按钮：「我做更有意思那个」「我做更让我舒服那个」，不计入功能分。本能题选完「最像」后，还可以再点一个「最不像」，用来排第二、第三。</div>
+        <div style={{ fontSize: 15.5, marginTop: 10 }}>选最像你平常、而不是理想中的那个。八维题如果两个方向都不是你平时的做法，选「都不是」比硬选更合适；这类题选多了，有效样本会变窄，类型结果请当草稿。九型和本能题另有「我不知道」（不计分）和「都不是」（每个选项各扣一点）。社交、团队、自由安排类的题多两个按钮：「我做更有意思那个」「我做更让我舒服那个」，不计入功能分。本能题选完「最像」后，还可以再点一个「最不像」，用来排第二、第三。</div>
         <div style={{ fontSize: 14.5, color: MUTED, marginTop: 10, fontStyle: "italic" }}>{`一次一题，共 ${Q.length} 题；普通题选中后自动翻到下一题，本能题选完「最像」「最不像」再翻页。随时可以回到上一题改答案，答完才出结果。`}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 18 }}>
           <button type="button" onClick={() => go(cur)} style={pbtn(true)}>{R.done === 0 ? "开始作答 →" : "继续作答 →"}</button>
