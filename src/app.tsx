@@ -1,4 +1,4 @@
-import { Page, useState, useMemo, type ChangeEvent, type CSSProperties } from "./kit";
+import { Page, useState, useMemo, useEffect, useRef, type ChangeEvent, type CSSProperties } from "./kit";
 
 type Item = { id: string; g: string; s: string; o: [string, string][]; st?: number; c?: number };
 type Ans = Record<string, number | string>;
@@ -381,6 +381,8 @@ const fact = (label: string, value: string) => (
 );
 
 type Shot = { url: string; blob: Blob };
+type StepItem = { kind: "q"; q: Item; opts: { i: number; t: string }[] } | { kind: "p"; p: PItem; n: number };
+const quiet: CSSProperties = { background: "transparent", border: "none", padding: 0, color: MUTED, fontFamily: SERIF, fontSize: 13.5, fontStyle: "italic", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" };
 
 export default function App() {
   const [seed, setSeed] = useState<number>(() => Math.floor(Math.random() * 1e9));
@@ -393,7 +395,12 @@ export default function App() {
   const poOrder = useMemo(() => { const r = rng(seed + 7); return shuffle(PO, r).map((p: PItem) => (r() < 0.5 ? { ...p, o: [p.o[1], p.o[0]] as [string, string][] } : p)); }, [seed]);
   const clearCard = (): void => { setShot((cur: Shot | null) => { if (cur) URL.revokeObjectURL(cur.url); return null; }); setShareFlash(""); };
   const setA = (id: string, v: number | string): void => { const n: Ans = { ...ans }; if (n[id] === v) delete n[id]; else n[id] = v; setAns(n); clearCard(); };
-  const reset = (): void => { setAns({}); setSeed(Math.floor(Math.random() * 1e9)); setName(""); clearCard(); };
+  const [stage, setStage] = useState<string>("cover");
+  const [step, setStep] = useState<number>(0);
+  const timer = useRef<number | null>(null);
+  const topRef = useRef<HTMLDivElement | null>(null);
+  const stopTimer = (): void => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
+  const reset = (): void => { stopTimer(); setAns({}); setSeed(Math.floor(Math.random() * 1e9)); setName(""); clearCard(); setStep(0); setStage("cover"); };
 
   // MBTI headline
   const top = R.ts[0], sec = R.ts[1];
@@ -435,6 +442,25 @@ export default function App() {
     if (!lock && ready) { addPair(s[0], s[1]); const w = hw(s[0], s[1]); if (w !== 0) { lock = true; if (w < 0) { k = s[1]; alt2 = s[0]; } } }
     return { k, v: R.e[k], lock, alt: alt2 }; }).sort((x: { v: number }, y: { v: number }) => y.v - x.v);
   const tri = triParts.map((p: { k: string; lock: boolean; alt: string }) => p.lock ? nm(p.k) : `(${nm(p.k)}/${nm(p.alt)})`).join("");
+
+  // Step sequence: all questions in shuffled order, then any playoff items currently needed
+  const seq: StepItem[] = [
+    ...order.map((row: { q: Item; opts: { i: number; t: string }[] }): StepItem => ({ kind: "q", q: row.q, opts: row.opts })),
+    ...poOrder.filter((p: PItem) => needPairs.includes(pk2(p.a, p.b))).map((p: PItem, n: number): StepItem => ({ kind: "p", p, n })),
+  ];
+  const stepId = (s: StepItem): string => (s.kind === "q" ? s.q.id : s.p.id);
+  const unanswered = seq.map((s: StepItem, i: number) => (ans[stepId(s)] === undefined ? i : -1)).filter((i: number) => i >= 0);
+  const cur = Math.min(step, Math.max(0, seq.length - 1));
+  useEffect(() => { if (stage === "q" && step >= seq.length) { setStage("result"); setStep(Math.max(0, seq.length - 1)); } }, [stage, step, seq.length]);
+  useEffect(() => { const el = topRef.current; if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: "start" }); }, [stage, step]);
+  useEffect(() => () => stopTimer(), []);
+  const go = (i: number): void => { stopTimer(); setStep(i); setStage("q"); };
+  const next = (): void => { stopTimer(); setStep(cur + 1); };
+  const prev = (): void => { stopTimer(); if (cur > 0) setStep(cur - 1); else setStage("cover"); };
+  const pick = (id: string, v: number | string, adv: boolean): void => {
+    const off = ans[id] === v; setA(id, v); stopTimer();
+    if (!off && adv) { const from = cur; timer.current = window.setTimeout(() => { timer.current = null; setStep(from + 1); }, 260); }
+  };
 
   // Instinct
   const iS = INS.slice().sort((x: string, y: string) => R.i[y] - R.i[x]);
@@ -513,14 +539,16 @@ export default function App() {
 
   return (
     <Page title="人设类型学合测 · 轴向版" lang="zh-Hans" width="column" summary={`八维按功能轴和主导方向排栈，九型和本能按动机三选一、按选中率计分。共 ${Q.length} 题，测完可生成一张结果分享图。`}>
-      <div style={{ background: PAPER, color: INK, fontFamily: SERIF, border: `1px solid ${INK}`, boxShadow: `inset 0 0 0 6px ${PAPER}, inset 0 0 0 7px rgba(29,42,104,0.45)`, padding: "26px clamp(16px, 5vw, 44px) 34px", maxWidth: 800, margin: "0 auto", boxSizing: "border-box", lineHeight: 1.6 }}>
+      <div ref={topRef} style={{ background: PAPER, color: INK, fontFamily: SERIF, border: `1px solid ${INK}`, boxShadow: `inset 0 0 0 6px ${PAPER}, inset 0 0 0 7px rgba(29,42,104,0.45)`, padding: "26px clamp(16px, 5vw, 44px) 34px", maxWidth: 800, margin: "0 auto", boxSizing: "border-box", lineHeight: 1.6 }}>
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "4px 16px" }}>
           <span style={{ fontSize: 12.5, letterSpacing: "0.26em" }}>人设类型学合测 · 轴向版</span>
-          <span style={{ fontSize: 12.5, letterSpacing: "0.18em" }}>{`已答 ${R.done}/${Q.length}`}</span>
+          <span style={{ fontSize: 12.5, letterSpacing: "0.18em" }}>{stage === "q" ? `第 ${cur + 1} / ${seq.length} 题 · 已答 ${R.done}/${Q.length}` : `已答 ${R.done}/${Q.length}`}</span>
         </div>
         <div style={{ marginTop: 8, height: 1, background: INK }} />
         <div style={{ height: 2, background: "rgba(29,42,104,0.08)" }}><div style={{ width: `${pct}%`, height: 2, background: SUN }} /></div>
 
+        {stage === "cover" ? (
+        <div>
         <div style={{ padding: "34px 0 6px" }}>
           <div style={tag}>TYPOLOGIA · EDITIO AXIALIS · Nº 01</div>
           <div style={{ fontSize: "clamp(40px, 9vw, 66px)", lineHeight: 1.08, marginTop: 14, letterSpacing: "0.02em" }}>人设类型学合测</div>
@@ -530,57 +558,75 @@ export default function App() {
 
         {head("§ I", "怎么答", "modus respondendi")}
         <div style={{ fontSize: 15.5, marginTop: 10 }}>选最像你平常、而不是理想中的那个。九型和本能题另有「我不知道」（不计分）和「都不是」（三个方向各扣一点）。社交、团队、自由安排类的题多两个按钮：「我做更有意思那个」「我做更让我舒服那个」，不计入功能分。本能题选完「最像」后，还可以再点一个「最不像」，用来排第二、第三。</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 14 }}>
-          <button type="button" onClick={reset} style={pbtn(false)}>重置并重新打乱</button>
-          <span style={{ color: MUTED, fontSize: 13, fontStyle: "italic" }}>{`已答 ${R.done} / ${Q.length}`}</span>
+        <div style={{ fontSize: 14.5, color: MUTED, marginTop: 10, fontStyle: "italic" }}>{`一次一题，共 ${Q.length} 题；普通题选中后自动翻到下一题，本能题选完「最像」「最不像」再翻页。随时可以回到上一题改答案，答完才出结果。`}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 18 }}>
+          <button type="button" onClick={() => go(cur)} style={pbtn(true)}>{R.done === 0 ? "开始作答 →" : "继续作答 →"}</button>
+          {R.done > 0 ? <button type="button" onClick={reset} style={pbtn(false)}>重置并重新打乱</button> : null}
+          {R.done > 0 ? <button type="button" onClick={() => { stopTimer(); setStage("result"); }} style={quiet}>查看目前结果</button> : null}
         </div>
+        </div>
+        ) : null}
 
-        {head("§ II", "题目", "quaestiones")}
-        {order.map((row: { q: Item; opts: { i: number; t: string }[] }, n: number) => {
-          const q = row.q; const a = ans[q.id]; const three = q.g === "e" || q.g === "i";
+        {stage === "q" && seq.length > 0 ? (() => {
+          const s = seq[cur];
+          const id = stepId(s);
+          const a = ans[id];
+          const isI = s.kind === "q" && s.q.g === "i";
+          const three = s.kind === "q" && (s.q.g === "e" || s.q.g === "i");
+          const last = cur >= seq.length - 1;
           return (
-            <div key={q.id} style={qBox}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "baseline" }}>
-                <span style={{ fontStyle: "italic", fontSize: 15, color: DIM }}>{`No. ${n + 1}`}</span>
-                <span style={{ fontSize: 11.5, letterSpacing: "0.22em", color: DIM }}>{GL[q.g]}</span>
+            <div style={{ minHeight: 420 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "2px 12px", marginTop: 30 }}>
+                <span style={{ fontStyle: "italic", fontSize: 16, color: DIM }}>{s.kind === "q" ? `No. ${cur + 1}` : `加赛 ${romanN(s.n + 1)}`}</span>
+                <span style={tag}>{s.kind === "q" ? GL[s.q.g] : "九型 · 加赛"}</span>
               </div>
-              <div style={qText}>{q.s}</div>
-              {row.opts.map((op: { i: number; t: string }, j: number) => (
-                <button type="button" key={op.i} onClick={() => setA(q.id, op.i)} style={opt(a === op.i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"abcd"[j]}.`}</span>{op.t}</button>
-              ))}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                {q.st ? <button type="button" onClick={() => setA(q.id, "fun")} style={chip(a === "fun")}>我做更有意思那个</button> : null}
-                {q.st ? <button type="button" onClick={() => setA(q.id, "comfy")} style={chip(a === "comfy")}>我做更让我舒服那个</button> : null}
-                {three ? <button type="button" onClick={() => setA(q.id, "idk")} style={chip(a === "idk")}>我不知道</button> : null}
-                {q.g === "i" && typeof a === "number" ? row.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }) => <button type="button" key={"l" + op.i} onClick={() => setA(q.id + "_l", op.i)} style={chip(ans[q.id + "_l"] === op.i)}>{`最不像：${op.t}`}</button>) : null}
-                <button type="button" onClick={() => setA(q.id, "none")} style={chip(a === "none")}>都不是</button>
+              {s.kind === "p" ? <div style={{ fontSize: 13, color: MUTED, marginTop: 4 }}>只在分数差不到 15 时出现；只用来分胜负，不改选中率</div> : null}
+              <div style={{ color: INK, fontSize: "clamp(20px, 4.4vw, 26px)", lineHeight: 1.5, marginTop: 12, wordBreak: "break-word" }}>{s.kind === "q" ? s.q.s : s.p.s}</div>
+              {isI ? <div style={{ fontSize: 12, letterSpacing: "0.2em", color: DIM, marginTop: 14 }}>第一步 · 最像</div> : null}
+              <div style={{ marginTop: isI ? 2 : 12 }}>
+                {s.kind === "q"
+                  ? s.opts.map((op: { i: number; t: string }, j: number) => (
+                      <button type="button" key={op.i} onClick={() => pick(id, op.i, !isI)} style={opt(a === op.i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"abcd"[j]}.`}</span>{op.t}</button>
+                    ))
+                  : s.p.o.map((o: [string, string], i: number) => (
+                      <button type="button" key={i} onClick={() => pick(id, i, true)} style={opt(a === i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"ab"[i]}.`}</span>{o[1]}</button>
+                    ))}
+              </div>
+              {isI && s.kind === "q" && typeof a === "number" ? (
+                <div style={{ marginTop: 16, padding: "12px 14px", border: `1px solid ${INK}`, background: PAPER2 }}>
+                  <div style={{ fontSize: 12, letterSpacing: "0.2em", color: DIM }}>第二步 · 最不像（可选）</div>
+                  <div style={{ fontSize: 13.5, color: MUTED, marginTop: 2 }}>本能题选完「最像」不会自动翻页。点一个最不像的，会直接进入下一题；不想选就点「下一题」。</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                    {s.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }) => <button type="button" key={"l" + op.i} onClick={() => pick(id + "_l", op.i, true)} style={chip(ans[id + "_l"] === op.i)}>{`最不像：${op.t}`}</button>)}
+                  </div>
+                </div>
+              ) : null}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "fun", true)} style={chip(a === "fun")}>我做更有意思那个</button> : null}
+                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "comfy", true)} style={chip(a === "comfy")}>我做更让我舒服那个</button> : null}
+                {three ? <button type="button" onClick={() => pick(id, "idk", true)} style={chip(a === "idk")}>我不知道</button> : null}
+                <button type="button" onClick={() => pick(id, "none", true)} style={chip(a === "none")}>{s.kind === "q" ? "都不是" : "都不像"}</button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginTop: 28, paddingTop: 14, borderTop: `1px solid ${HAIR}` }}>
+                <button type="button" onClick={prev} style={pbtn(false)}>{cur === 0 ? "← 回到封面" : "← 上一题"}</button>
+                <button type="button" onClick={next} style={pbtn(true)}>{last ? "完成，看结果" : "下一题 →"}</button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 14, alignItems: "baseline" }}>
+                {unanswered.length > 0 && unanswered[0] !== cur ? <button type="button" onClick={() => go(unanswered[0])} style={quiet}>{`跳到第一道未答题（还有 ${unanswered.length} 题）`}</button> : null}
+                {R.done > 0 ? <button type="button" onClick={() => { stopTimer(); setStage("result"); }} style={quiet}>查看目前结果</button> : null}
               </div>
             </div>
           );
-        })}
+        })() : null}
 
-        {needPairs.length > 0 ? (
+        {stage === "result" ? (
           <div>
-            {head("§ III", "九型加赛", "certamen decretorium", "只在分数差不到 15 时出现；只用来分胜负，不改上面的选中率")}
-            {poOrder.filter((p: PItem) => needPairs.includes(pk2(p.a, p.b))).map((p: PItem, n: number) => {
-              const a = ans[p.id];
-              return (
-                <div key={p.id} style={qBox}>
-                  <span style={{ fontStyle: "italic", fontSize: 15, color: DIM }}>{`加赛 ${romanN(n + 1)}`}</span>
-                  <div style={qText}>{p.s}</div>
-                  {p.o.map((o: [string, string], i: number) => (
-                    <button type="button" key={i} onClick={() => setA(p.id, i)} style={opt(a === i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"ab"[i]}.`}</span>{o[1]}</button>
-                  ))}
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                    <button type="button" onClick={() => setA(p.id, "none")} style={chip(a === "none")}>都不像</button>
-                  </div>
-                </div>
-              );
-            })}
-            {tbl(["对局", "比分", "胜方"], needPairs.map((k: string) => { const [a, b] = k.split("-"); const r = h2h(a, b); return [`${nm(a)} 对 ${nm(b)}`, `${r.x} : ${r.y}`, r.x === r.y ? "平" : `${nm(r.x > r.y ? a : b)} 号`]; }), 1)}
+        {unanswered.length > 0 ? (
+          <div style={{ marginTop: 26, padding: "10px 14px", border: `1px solid ${WARN}`, color: WARN, fontSize: 14, display: "flex", flexWrap: "wrap", gap: "6px 14px", alignItems: "baseline" }}>
+            <span style={{ flex: "1 1 220px", minWidth: 0 }}>{`还有 ${unanswered.length} 题没答，下面先按已答部分计分。`}</span>
+            <button type="button" onClick={() => go(unanswered[0])} style={{ ...quiet, color: WARN }}>去答未答的题</button>
           </div>
         ) : null}
-
         {head("PL. I", "结果标本", "specimen")}
         <div style={{ marginTop: 16, border: `1px solid ${INK}`, padding: 5 }}>
           <div style={{ border: `1px solid rgba(29,42,104,0.45)`, padding: "18px clamp(14px, 4vw, 32px) 22px", background: PAPER }}>
@@ -636,6 +682,9 @@ export default function App() {
         {shareFlash ? <div style={{ color: shareFlash.startsWith("图已") ? MUTED : WARN, fontSize: 13, marginTop: 8, wordBreak: "break-word" }}>{shareFlash}</div> : null}
         {shot ? <img src={shot.url} alt="测试结果分享图" style={{ display: "block", width: "100%", height: "auto", marginTop: 14, border: `1px solid ${INK}` }} /> : null}
 
+        {needPairs.length > 0 ? head("附录 ·", "九型加赛对局", "certamen decretorium", "加赛只用来分胜负，不改选中率") : null}
+        {needPairs.length > 0 ? tbl(["对局", "比分", "胜方"], needPairs.map((k: string) => { const [a, b] = k.split("-"); const r = h2h(a, b); return [`${nm(a)} 对 ${nm(b)}`, `${r.x} : ${r.y}`, r.x === r.y ? "平" : `${nm(r.x > r.y ? a : b)} 号`]; }), 1) : null}
+
         {head("附录 A", "栈的候选", "stirpes candidatae", "栈分 = 主导 40% + 辅助 30% + 第三 10% + 劣势 3% + 轴 9% + 方向题 11%；主导或辅助低于 15 的栈打 6 折")}
         {tbl(["类型", "栈", "栈分"], R.ts.slice(0, 5).map((t: { t: string; s: string[]; v: number }) => [t.t, t.s.join("-"), String(t.v)]), 2)}
 
@@ -668,6 +717,14 @@ export default function App() {
             </a>
           ))}
         </div>
+
+          <div style={{ marginTop: 36, paddingTop: 14, borderTop: `1px solid ${HAIR}`, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <button type="button" onClick={() => go(cur)} style={pbtn(false)}>← 回到题目</button>
+            {unanswered.length > 0 ? <button type="button" onClick={() => go(unanswered[0])} style={pbtn(false)}>{`去答未答的 ${unanswered.length} 题`}</button> : null}
+            <button type="button" onClick={reset} style={pbtn(false)}>重置并重新打乱</button>
+          </div>
+          </div>
+        ) : null}
 
         <div style={{ marginTop: 40, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, height: 3 }} />
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", marginTop: 10, fontSize: 12, letterSpacing: "0.16em", color: DIM }}>
