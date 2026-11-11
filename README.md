@@ -1,8 +1,10 @@
 # 人设类型学合测 · 轴向版
 
-八维（功能轴 + 主辅先后）× 九型（动机三选一 + 加赛）× 本能（最像 / 最不像）的静态测试页。
+八维（功能轴 + 主辅先后）× 九型（动机三选一 + 加赛）× 本能（最像 / 最不像）的静态测试页。版式走「暖纸标本」：羊皮纸底、靛蓝衬线字、细线框和图版编号。
 
 - 在线地址：https://wr050429.github.io/renshe-typology-test/
+- 分享图：测完点「生成分享图」，会在浏览器里画出一张 1080 宽（2 倍清晰度）的结果标本图，可以下载、用系统分享发出去，或者长按 / 右键保存页面上的预览图。
+- 结果只在你自己的浏览器里计算和生成，不会上传到仓库或服务器，也不会在本机留存记录；刷新或重置后就没有了。
 - `index.html` + `app.js` 是构建产物，直接由 GitHub Pages 提供。
-- 源码在 `src/`：`app.tsx`（题库与计分）、`kit.tsx`（界面组件）、`main.tsx`。
+- 源码在 `src/`：`app.tsx`（题库、计分、页面和分享图）、`kit.tsx`（外层页面壳）、`main.tsx`。
 - 重新构建：`npm i react@18 react-dom@18 esbuild && npx esbuild src/main.tsx --bundle --minify --jsx=automatic --outfile=app.js`
