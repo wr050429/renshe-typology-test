@@ -36,6 +36,9 @@ const Q: Item[] = [
 {id:"a6",g:"a",s:"什么能让你改变看法？",o:[["Ti","别人觉得有没有用不算数，我自己从头想通了才会改"],["Fe","看到身边大多数人都认同，或者改了大家相处得更好"]]},
 {id:"a7",g:"a",s:"决定一件事做不做，你先看？",o:[["Te","外部的标准、效果和代价"],["Fi","这事我打心底想不想做、做了对不对得起自己"]]},
 {id:"a8",g:"a",s:"冲突僵住时，你更会？",o:[["Te","推进到一个能执行的解决办法"],["Fi","退回来守住自己的感受和立场"]]},
+{id:"a9",g:"a",s:"想让别人接受你的意见，得换个说法的时候，你更像？",o:[["Te","换成他听得进去的说法，他点头了就行，不再多绕"],["Ne","换着说法试来试去挺好玩，说着说着还会冒出新想法，聊到别处去"]]},
+{id:"a10",g:"a",s:"一个办法行不通，要换别的办法时，你更像？",o:[["Ne","顺手想出好几种别的玩法，忍不住都想试试，哪怕已经有一个能用了"],["Te","换一个最快能把事办成的，成了就照这个做下去，不再折腾"]]},
+{id:"a11",g:"a",s:"为了一个目标想办法的时候，你脑子里更常是？",o:[["Te","盯着目标，哪个办法最省事有效就用哪个，别的先不想"],["Ne","想着想着冒出一堆新可能，有时连目标都想换成一个更有意思的"]]},
 {id:"d1",g:"d",s:"哪个更像你平时的状态？",o:[["Pe","被外面正在发生的新东西拉着走"],["Pi","在心里反复琢磨已经见过、知道的东西"]]},
 {id:"d2",g:"d",s:"信息量突然变大时？",o:[["Pe","越多越来劲"],["Pi","想先关掉，沉淀一下"]]},
 {id:"d3",g:"d",s:"判断一件事对不对，你更依靠？",o:[["Je","外面公认的标准和实际结果"],["Ji","我自己心里那把尺子"]]},
@@ -44,7 +47,7 @@ const Q: Item[] = [
 {id:"d6",g:"d",st:1,s:"朋友更常怎么形容你？",o:[["Pd","随性、反应快、点子多或者手感好"],["Jd","有主见、拍板快、立场清楚"]]},
 {id:"x1",g:"x",s:"碰到一个新东西，你通常先？",o:[["Pe","先去碰、去看、去试，看它还能怎么玩"],["Ji","先在心里拿自己的尺子量一量，值不值得"]]},
 {id:"x2",g:"x",s:"一天下来，你的精力更多花在？",o:[["Pe","接收外面的新信息、新刺激"],["Ji","在心里分析、衡量这些东西对不对"]]},
-{id:"x3",g:"x",s:"别人更常觉得你是？",o:[["Pe","先动起来、边走边看的人"],["Ji","心里有自己一套是非好坏标准的人"]]},
+{id:"x3",g:"x",s:"别人更常觉得你是？",o:[["Pe","对新东西、新情况总是先接下来、先去看看的人"],["Ji","心里有自己一套是非好坏标准的人"]]},
 {id:"x4",g:"x",s:"一件事刚摆到你面前，你更常？",o:[["Pi","先在心里过一遍，弄明白大概怎么回事"],["Je","先把事情安排、推进起来"]]},
 {id:"x5",g:"x",st:1,s:"一起商量一件事时，你更像？",o:[["Pi","在想这件事的来龙去脉和走向"],["Je","在把大家说的定成一个能马上动手的办法"]]},
 {id:"x6",g:"x",s:"压力大时，你先？",o:[["Pi","先缩回自己心里，回想熟悉的事和感觉，让自己缓过来"],["Je","先把外面的事理顺，该定的定、该推的推"]]},
@@ -161,7 +164,7 @@ const AXOF: Record<string, string> = { Ne: "NeSi", Si: "NeSi", Ni: "NiSe", Se: "
 const AXN: Record<string, string> = { NeSi: "Ne-Si 轴", NiSe: "Ni-Se 轴", TiFe: "Ti-Fe 轴", TeFi: "Te-Fi 轴" };
 const EN = ["e1","e2","e3","e4","e5","e6","e7","e8","e9"];
 const INS = ["sp", "so", "sx"];
-const GL: Record<string, string> = { f: "八维", a: "八维·轴内", d: "八维·方向", x: "八维·先后", e: "九型", i: "本能" };
+const GL: Record<string, string> = { f: "八维", a: "八维·二选一", d: "八维·方向", x: "八维·先后", e: "九型", i: "本能" };
 
 function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -405,16 +408,17 @@ export default function App() {
   // MBTI headline
   const top = R.ts[0], sec = R.ts[1];
   const fnDone = Q.filter((q: Item) => (q.g === "f" || q.g === "a") && typeof ans[q.id] === "number").length;
+  const fnTotal = Q.filter((q: Item) => q.g === "f" || q.g === "a").length;
   const twin = R.ts.find((t: { s: string[] }) => t.s[0] === top.s[1] && t.s[1] === top.s[0]) || sec;
   const other = R.ts.slice(1).find((t: { t: string }) => t.t !== twin.t) || sec;
   const gapO = Math.round((top.v - other.v) * 10) / 10; const gapW = Math.round((top.v - twin.v) * 10) / 10;
   const locked = fnDone >= 20 && gapO >= 5 && gapW >= 3;
-  const mbti = fnDone < 20 ? `八维题答了 ${fnDone}/32，先别看` : locked ? `${top.t}（${top.s.join("-")}）` : gapO >= 5 ? `${top.t} / ${twin.t} 待定（主辅先后没分开）` : `${top.t} / ${other.t} 待定`;
+  const mbti = fnDone < 20 ? `八维题答了 ${fnDone}/${fnTotal}，先别看` : locked ? `${top.t}（${top.s.join("-")}）` : gapO >= 5 ? `${top.t} / ${twin.t} 待定（主辅先后没分开）` : `${top.t} / ${other.t} 待定`;
   const auxLow = fnDone >= 20 && R.f[top.s[1]] < 35;
   const alt = gapO >= 5 ? twin : other;
   const code = fnDone < 20 ? "" : locked ? top.t : `${top.t} / ${alt.t}`;
   const stack = fnDone < 20 ? "" : locked ? top.s.join(" – ") : `${top.s.join("–")}  /  ${alt.s.join("–")}`;
-  const note = fnDone < 20 ? `八维题答了 ${fnDone}/32，先别看` : locked ? "已锁 · TYPUS FIXUS" : (gapO >= 5 ? "主辅先后还没分开，类型待定" : "与其他类型差距不足，类型待定");
+  const note = fnDone < 20 ? `八维题答了 ${fnDone}/${fnTotal}，先别看` : locked ? "已锁 · TYPUS FIXUS" : (gapO >= 5 ? "主辅先后还没分开，类型待定" : "与其他类型差距不足，类型待定");
 
   // Enneagram
   const eRank = EN.filter((k: string) => (R.ea[k] || 0) >= MIN_N).sort((x: string, y: string) => R.e[y] - R.e[x]);
