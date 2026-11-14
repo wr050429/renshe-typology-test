@@ -1,4 +1,6 @@
 import { Page, useState, useMemo, useEffect, useRef, type ChangeEvent, type CSSProperties } from "./kit";
+import Starfield from "./starfield";
+import { soundEnabled, setSoundEnabled, playFlip, playReveal, playNote, noteAt } from "./sound";
 
 type Item = { id: string; g: string; s: string; o: [string, string][]; st?: number; c?: number };
 type Ans = Record<string, number | string>;
@@ -221,8 +223,11 @@ const MIN_N = 4;
 const GAP = 15;
 const AGES = ["18 岁以下", "18–22", "23–29", "30 及以上"];
 
-const PAPER = "#F2E9D2", PAPER2 = "#ECE1C4", WASH = "#F4DEA6", INK = "#1D2A68", MUTED = "#5A6285", DIM = "#8C7A55", SUN = "#F6C23E", WARN = "#8B3A2A", TRACK = "#E3D6B3";
-const HAIR = "rgba(29,42,104,0.22)";
+const PAPER = "#171E42", PAPER2 = "#1B2350", WASH = "rgba(232,200,120,0.14)", INK = "#EDE7D3", MUTED = "#9AA3C7", DIM = "#6E76A3", SUN = "#E8C878", WARN = "#D96A5A", TRACK = "#232B52";
+const GOLD = "#D8B25C";
+const GOLD_MID = "#D8A84E";
+const GOLD_DEEP = "#C9962E";
+const HAIR = "rgba(216,178,92,0.25)";
 const SERIF = 'Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
 const SITE = "wr050429.github.io/renshe-typology-test";
 
@@ -257,7 +262,11 @@ function paintCard(ctx: CanvasRenderingContext2D, d: ShareCard, H: number, real:
     let cx = align === "left" ? x : align === "right" ? x - w : x - w / 2;
     chars.forEach((c: string) => { ctx.fillText(c, cx, yy); cx += ctx.measureText(c).width + sp; });
   };
-  const rule = (yy: number, lw: number): void => { ctx.fillStyle = INK; ctx.fillRect(pad, yy, maxW, lw); };
+  // 金色规则线：笔直的几何直线
+  const rule = (yy: number, lw: number): void => {
+    ctx.strokeStyle = GOLD; ctx.lineWidth = lw; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(pad, yy); ctx.lineTo(pad + maxW, yy); ctx.stroke();
+  };
   const cen = (t: string, yy: number): void => { ctx.fillText(t, (W - ctx.measureText(t).width) / 2, yy); };
   const figHead = (x: number, w: number, yy: number, no: string, title: string, latin: string): void => {
     f(16); ctx.fillStyle = INK; spaced(`${no} · ${title}`, x, yy, 4, "left");
@@ -266,15 +275,17 @@ function paintCard(ctx: CanvasRenderingContext2D, d: ShareCard, H: number, real:
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
   if (real) {
-    ctx.fillStyle = PAPER; ctx.fillRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0D1230"); g.addColorStop(1, "#141B3D");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     const r = rng(d.seed);
     const n = Math.round((W * H) / 80);
     for (let i = 0; i < n; i++) {
-      const a = 0.025 + r() * 0.07; const s = 0.6 + r() * 1.4;
-      ctx.fillStyle = r() < 0.72 ? `rgba(140,122,85,${a.toFixed(3)})` : `rgba(29,42,104,${(a * 0.55).toFixed(3)})`;
-      ctx.fillRect(r() * W, r() * H, s, s);
+      const a = 0.15 + r() * 0.6; const s = 0.6 + r() * 1.4;
+      ctx.fillStyle = r() < 0.3 ? `rgba(216,178,92,${a.toFixed(3)})` : `rgba(237,231,211,${a.toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(r() * W, r() * H, s, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.strokeRect(40, 40, W - 80, H - 80);
+    ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.strokeRect(40, 40, W - 80, H - 80);
     ctx.lineWidth = 0.8; ctx.strokeRect(50, 50, W - 100, H - 100);
   }
   let y = 84;
@@ -291,7 +302,28 @@ function paintCard(ctx: CanvasRenderingContext2D, d: ShareCard, H: number, real:
   if (d.stack) { f(34, true); ctx.fillStyle = MUTED; wrapText(ctx, d.stack, maxW).forEach((l: string) => { cen(l, y); y += 46; }); }
   y += 8; f(19); ctx.fillStyle = DIM;
   wrapText(ctx, d.note, maxW - 120).forEach((l: string) => { spaced(l, W / 2, y, 3, "center"); y += 30; });
-  y += 20; ctx.fillStyle = SUN; ctx.fillRect(W / 2 - 70, y, 140, 3); y += 46;
+  y += 20;
+  // 标题处的小星座分隔符：五颗星，中间最亮、两边渐淡的递进式鎏金
+  (() => {
+    const pts: [number, number][] = [[W / 2 - 70, y + 8], [W / 2 - 35, y], [W / 2, y + 10], [W / 2 + 35, y + 2], [W / 2 + 70, y + 8]];
+    ctx.strokeStyle = "rgba(216,178,92,0.7)"; ctx.lineWidth = 1; ctx.lineCap = "round";
+    ctx.beginPath();
+    pts.forEach(([x, yy], i) => {
+      if (i === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+    });
+    ctx.stroke();
+    const tiers = [
+      { c: "rgba(201,150,46,0.45)", r: 2.5 },
+      { c: "rgba(216,178,92,0.7)", r: 2.8 },
+      { c: "rgba(232,200,120,1)", r: 3.8 },
+      { c: "rgba(216,178,92,0.7)", r: 2.8 },
+      { c: "rgba(201,150,46,0.45)", r: 2.5 },
+    ];
+    ctx.fillStyle = "rgba(232,200,120,0.15)";
+    ctx.beginPath(); ctx.arc(W / 2, y + 10, 9, 0, Math.PI * 2); ctx.fill();
+    pts.forEach(([x, yy], i) => { ctx.fillStyle = tiers[i].c; ctx.beginPath(); ctx.arc(x, yy, tiers[i].r, 0, Math.PI * 2); ctx.fill(); });
+  })();
+  y += 46;
   rule(y, 1.2); rule(y + 5, 0.6); y += 38;
   figHead(pad, maxW, y, "FIG. I", "功能轴", "axes functionum"); y += 46;
   d.axes.forEach((a: { label: string; value: number }) => {
@@ -299,9 +331,9 @@ function paintCard(ctx: CanvasRenderingContext2D, d: ShareCard, H: number, real:
     const val = String(Math.round(a.value)); f(26); ctx.fillText(val, W - pad - ctx.measureText(val).width, y);
     const bx = pad + 140, bw = maxW - 140 - 76, by = y + 7, bh = 16;
     ctx.fillStyle = TRACK; ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = INK; ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, a.value / 100)), bh);
-    ctx.strokeStyle = INK; ctx.lineWidth = 0.8; ctx.strokeRect(bx, by, bw, bh);
-    ctx.fillStyle = "rgba(29,42,104,0.5)";
+    ctx.fillStyle = GOLD; ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, a.value / 100)), bh);
+    ctx.strokeStyle = GOLD; ctx.lineWidth = 0.8; ctx.strokeRect(bx, by, bw, bh);
+    ctx.fillStyle = "rgba(216,178,92,0.5)";
     [0.25, 0.5, 0.75].forEach((t: number) => { ctx.fillRect(bx + bw * t, by - 6, 1, 6); ctx.fillRect(bx + bw * t, by + bh, 1, 6); });
     y += 54;
   });
@@ -318,7 +350,7 @@ function paintCard(ctx: CanvasRenderingContext2D, d: ShareCard, H: number, real:
   };
   const yl = col(pad, y0, "FIG. II", "九型", "enneagramma", d.enn);
   const yr = col(pad + colW + gap, y0, "FIG. III", "本能", "instinctus", d.ins);
-  ctx.fillStyle = "rgba(29,42,104,0.35)"; ctx.fillRect(pad + colW + gap / 2, y0, 0.8, Math.max(yl, yr) - y0 - 14);
+  ctx.fillStyle = "rgba(216,178,92,0.35)"; ctx.fillRect(pad + colW + gap / 2, y0, 0.8, Math.max(yl, yr) - y0 - 14);
   y = Math.max(yl, yr) + 6;
   if (d.warns.length) {
     rule(y, 0.6); y += 28;
@@ -343,14 +375,14 @@ function drawResultCard(d: ShareCard): HTMLCanvasElement {
   return c;
 }
 
-const opt = (sel: boolean): CSSProperties => ({ display: "block", width: "100%", boxSizing: "border-box", textAlign: "left", whiteSpace: "normal", wordBreak: "break-word", padding: "10px 14px", marginTop: 8, borderRadius: 1, border: `1px solid ${sel ? INK : "rgba(29,42,104,0.34)"}`, boxShadow: sel ? `inset 3px 0 0 ${SUN}` : "none", background: sel ? WASH : "transparent", color: INK, fontFamily: SERIF, fontSize: 15.5, lineHeight: 1.6, cursor: "pointer" });
-const chip = (sel: boolean): CSSProperties => ({ display: "inline-block", padding: "5px 10px", borderRadius: 0, border: `1px solid ${sel ? INK : HAIR}`, background: sel ? WASH : "transparent", color: sel ? INK : MUTED, fontFamily: SERIF, fontSize: 13, lineHeight: 1.45, textAlign: "left", whiteSpace: "normal", cursor: "pointer" });
-const pbtn = (primary: boolean): CSSProperties => ({ padding: "9px 16px", borderRadius: 0, border: `1px solid ${INK}`, background: primary ? INK : "transparent", color: primary ? PAPER : INK, fontFamily: SERIF, fontSize: 14.5, letterSpacing: "0.08em", cursor: "pointer" });
+const opt = (sel: boolean): CSSProperties => ({ display: "block", width: "100%", boxSizing: "border-box", textAlign: "left", whiteSpace: "normal", wordBreak: "break-word", padding: "10px 14px", marginTop: 8, borderRadius: 1, border: `1px solid ${sel ? GOLD : "rgba(216,178,92,0.30)"}`, boxShadow: sel ? `inset 3px 0 0 ${SUN}, 0 0 12px rgba(232,200,120,0.18)` : "none", background: sel ? WASH : "transparent", color: INK, fontFamily: SERIF, fontSize: 15.5, lineHeight: 1.6, cursor: "pointer" });
+const chip = (sel: boolean): CSSProperties => ({ display: "inline-block", padding: "5px 10px", borderRadius: 0, border: `1px solid ${sel ? GOLD : HAIR}`, background: sel ? WASH : "transparent", color: sel ? INK : MUTED, fontFamily: SERIF, fontSize: 13, lineHeight: 1.45, textAlign: "left", whiteSpace: "normal", cursor: "pointer" });
+const pbtn = (primary: boolean): CSSProperties => ({ padding: "9px 16px", borderRadius: 0, border: `1px solid ${GOLD}`, background: primary ? GOLD : "transparent", color: primary ? "#0D1230" : INK, fontFamily: SERIF, fontSize: 14.5, letterSpacing: "0.08em", cursor: "pointer" });
 const tag: CSSProperties = { fontSize: 12, letterSpacing: "0.22em", color: DIM };
 
 const head = (no: string, title: string, latin: string, cap?: string) => (
   <div style={{ marginTop: 44 }}>
-    <div style={{ borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, height: 3 }} />
+    <div style={{ borderTop: `1px solid ${GOLD}`, borderBottom: `1px solid ${GOLD}`, height: 3 }} />
     <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "2px 16px", padding: "10px 0 4px" }}>
       <span style={tag}>{no}</span>
       <span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>{latin}</span>
@@ -362,17 +394,17 @@ const head = (no: string, title: string, latin: string, cap?: string) => (
 const tbl = (cols: string[], rows: string[][], right: number) => (
   <div style={{ overflowX: "auto", marginTop: 14 }}>
     <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14, color: INK, fontFamily: SERIF }}>
-      <thead><tr>{cols.map((c: string, i: number) => <th key={i} style={{ textAlign: i >= right ? "right" : "left", padding: "6px 8px", fontWeight: 400, fontSize: 12, letterSpacing: "0.12em", color: DIM, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, whiteSpace: "nowrap" }}>{c}</th>)}</tr></thead>
-      <tbody>{rows.map((r: string[], j: number) => <tr key={j}>{r.map((c: string, i: number) => <td key={i} style={{ textAlign: i >= right ? "right" : "left", padding: "6px 8px", borderBottom: `1px solid ${j === rows.length - 1 ? INK : HAIR}`, fontVariantNumeric: "tabular-nums" }}>{c}</td>)}</tr>)}</tbody>
+      <thead><tr>{cols.map((c: string, i: number) => <th key={i} style={{ textAlign: i >= right ? "right" : "left", padding: "6px 8px", fontWeight: 400, fontSize: 12, letterSpacing: "0.12em", color: DIM, borderTop: `1px solid ${GOLD}`, borderBottom: `1px solid ${GOLD}`, whiteSpace: "nowrap" }}>{c}</th>)}</tr></thead>
+      <tbody>{rows.map((r: string[], j: number) => <tr key={j}>{r.map((c: string, i: number) => <td key={i} style={{ textAlign: i >= right ? "right" : "left", padding: "6px 8px", borderBottom: `1px solid ${j === rows.length - 1 ? GOLD : HAIR}`, fontVariantNumeric: "tabular-nums" }}>{c}</td>)}</tr>)}</tbody>
     </table>
   </div>
 );
 const bar = (label: string, v: number, key: string) => (
   <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: `1px solid ${HAIR}` }}>
     <span style={{ width: 58, flex: "0 0 auto", fontStyle: "italic", fontSize: 16 }}>{label}</span>
-    <div style={{ flex: "1 1 auto", minWidth: 0, position: "relative", height: 12, boxSizing: "border-box", background: TRACK, border: `1px solid ${INK}` }}>
-      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.max(0, Math.min(100, v))}%`, background: INK }} />
-      {[25, 50, 75].map((t: number) => <div key={t} style={{ position: "absolute", left: `${t}%`, top: -5, height: 4, width: 1, background: "rgba(29,42,104,0.5)" }} />)}
+    <div style={{ flex: "1 1 auto", minWidth: 0, position: "relative", height: 12, boxSizing: "border-box", background: TRACK, border: `1px solid ${GOLD}` }}>
+      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.max(0, Math.min(100, v))}%`, background: GOLD }} />
+      {[25, 50, 75].map((t: number) => <div key={t} style={{ position: "absolute", left: `${t}%`, top: -5, height: 4, width: 1, background: "rgba(216,178,92,0.5)" }} />)}
     </div>
     <span style={{ width: 34, flex: "0 0 auto", textAlign: "right", fontVariantNumeric: "tabular-nums", fontSize: 15 }}>{Math.round(v)}</span>
   </div>
@@ -383,6 +415,197 @@ const fact = (label: string, value: string) => (
     <div style={{ fontSize: 18, lineHeight: 1.45, marginTop: 2, wordBreak: "break-word" }}>{value}</div>
   </div>
 );
+
+// 是否偏好减少动态：动画只画静态最终帧
+function prefersReduced(): boolean {
+  try {
+    return typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+// 直线四角星芒
+function sparkle(x: number, y: number, len: number): string {
+  return `M ${x},${(y - len).toFixed(1)} L ${x},${(y + len).toFixed(1)} M ${(x - len).toFixed(1)},${y} L ${(x + len).toFixed(1)},${y}`;
+}
+// 三颗光晕递进：由外向内加深、加亮、加浓，中心如星核。
+const HALO_TIERS = [
+  { id: "haloOuter", color: SUN, opacity: 0.34, extra: 10 },
+  { id: "haloMid", color: GOLD_MID, opacity: 0.55, extra: 13 },
+  { id: "haloInner", color: GOLD_DEEP, opacity: 0.8, extra: 16 },
+];
+
+// 个人星图（结果页 PL. I 顶部）：三圈同心轨道，外圈八维、中圈九型、内圈本能。
+// 动态星轨：环上星点沿各自的环缓慢公转（外慢内快、方向不同）；三颗最强星另在中心附近做三体舞动
+// （三条不同椭圆轨道、不同周期与相位，参数化轨道，非引力仿真），彼此连淡淡的金色三角线。
+// 光晕跟着各自的星走；三颗光晕由外向内递进（香槟金 0.34 / 金 0.55 / 深鎏金 0.8）。
+function StarMap(props: { f: Record<string, number>; e: Record<string, number>; i: Record<string, number>; stack: string[] }) {
+  const CX = 200, CY = 200;
+  const [reduced] = useState<boolean>(() => prefersReduced());
+  const [t, setT] = useState<number>(0);
+  const tRef = useRef<number>(0);
+  useEffect(() => {
+    if (reduced) return;
+    let raf = 0;
+    let last = 0;
+    let lastSet = 0;
+    const step = (now: number): void => {
+      if (!document.hidden) {
+        if (!last) last = now;
+        const dt = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        tRef.current += dt;
+        if (now - lastSet >= 50) { lastSet = now; setT(tRef.current); }
+      } else {
+        last = 0;
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [reduced]);
+  const rings = [
+    { r: 170, name: "八维", items: FN.map((k: string) => ({ label: k, v: props.f[k] || 0 })), speed: (2 * Math.PI) / 120 },
+    { r: 115, name: "九型", items: EN.map((k: string) => ({ label: k.slice(1), v: props.e[k] || 0 })), speed: -(2 * Math.PI) / 80 },
+    { r: 60, name: "本能", items: INS.map((k: string) => ({ label: k, v: props.i[k] || 0 })), speed: (2 * Math.PI) / 50 },
+  ];
+  const pt = (r: number, j: number, n: number, speed: number): [number, number] => {
+    const a = (-90 + (j * 360) / n) * (Math.PI / 180) + speed * t;
+    return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+  };
+  const angOf = (j: number, n: number, speed: number): number => (-90 + (j * 360) / n) * (Math.PI / 180) + speed * t;
+  const tops = rings.map((ring) => {
+    let bi = 0;
+    ring.items.forEach((it, j) => { if (it.v > ring.items[bi].v) bi = j; });
+    return bi;
+  });
+  const stackPts = props.stack
+    .map((k: string) => FN.indexOf(k))
+    .filter((j: number) => j >= 0)
+    .map((j: number) => pt(170, j, 8, rings[0].speed));
+  // 中心三体舞动：三颗金点（取三圈最强星的 tier 色），三条椭圆轨道、不同周期与相位
+  const TRIO = [
+    { a: 48, b: 24, w: (2 * Math.PI) / 9, ph: 0, tier: 0 },
+    { a: 36, b: 30, w: -(2 * Math.PI) / 13, ph: 2.1, tier: 1 },
+    { a: 26, b: 18, w: (2 * Math.PI) / 7, ph: 4.2, tier: 2 },
+  ];
+  const trioPts = TRIO.map((o) => [CX + o.a * Math.cos(o.w * t + o.ph), CY + o.b * Math.sin(o.w * t + o.ph)] as [number, number]);
+  return (
+    <svg viewBox="0 0 400 400" role="img" aria-label="个人星图" style={{ display: "block", width: "100%", maxWidth: 400, height: "auto", margin: "6px auto 0" }}>
+      <defs>
+        <radialGradient id="haloOuter">
+          <stop offset="0%" stopColor={SUN} stopOpacity="1" />
+          <stop offset="55%" stopColor={SUN} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={SUN} stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="haloMid">
+          <stop offset="0%" stopColor={GOLD_MID} stopOpacity="1" />
+          <stop offset="55%" stopColor={GOLD_MID} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={GOLD_MID} stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="haloInner">
+          <stop offset="0%" stopColor={GOLD_DEEP} stopOpacity="1" />
+          <stop offset="45%" stopColor={GOLD_DEEP} stopOpacity="0.5" />
+          <stop offset="100%" stopColor={GOLD_DEEP} stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="coreGlow">
+          <stop offset="0%" stopColor={GOLD} stopOpacity="0.08" />
+          <stop offset="100%" stopColor={GOLD} stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="stackGold" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={SUN} />
+          <stop offset="100%" stopColor={GOLD_DEEP} />
+        </linearGradient>
+      </defs>
+      <circle cx={CX} cy={CY} r={192} fill="url(#coreGlow)" />
+      {rings.map((ring, ri) => (
+        <g key={ri}>
+          <circle cx={CX} cy={CY} r={ring.r} fill="none" stroke="rgba(216,178,92,0.4)" strokeWidth="1" />
+          <text x={CX} y={CY - ring.r + 18} textAnchor="middle" dominantBaseline="middle" fontSize="11" fontStyle="italic" fill={GOLD} fontFamily={SERIF}>{ring.name}</text>
+        </g>
+      ))}
+      <polygon points={trioPts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")} fill="none" stroke={GOLD} strokeWidth="0.8" strokeOpacity="0.35" />
+      {trioPts.map(([x, y], k) => {
+        const tier = HALO_TIERS[TRIO[k].tier];
+        return (
+          <g key={`trio-${k}`}>
+            <circle cx={x} cy={y} r={11} fill={`url(#${tier.id})`} fillOpacity={tier.opacity * 0.8} />
+            <circle cx={x} cy={y} r={3.5} fill={tier.color} />
+          </g>
+        );
+      })}
+      <circle cx={CX} cy={CY} r="3" fill={GOLD} />
+      {stackPts.length > 1 ? (
+        <polyline points={stackPts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")} fill="none" stroke="url(#stackGold)" strokeWidth="1.2" strokeOpacity="0.75" strokeLinejoin="round" strokeLinecap="round" />
+      ) : null}
+      {rings.map((ring, ri) =>
+        ring.items.map((it, j) => {
+          const [x, y] = pt(ring.r, j, ring.items.length, ring.speed);
+          const vv = Math.max(0, Math.min(100, it.v));
+          const dotR = 2.5 + (vv / 100) * 5;
+          const op = 0.4 + (vv / 100) * 0.6;
+          const isTop = tops[ri] === j;
+          const tier = HALO_TIERS[ri];
+          const ang = angOf(j, ring.items.length, ring.speed);
+          const lx = CX + (ring.r + dotR + 11) * Math.cos(ang);
+          const ly = CY + (ring.r + dotR + 11) * Math.sin(ang);
+          const anchor = lx < CX - 4 ? "end" : lx > CX + 4 ? "start" : "middle";
+          const tick = !isTop && j % 3 === 0 && Math.sin(ang) > 0.3;
+          return (
+            <g key={`${ri}-${j}`}>
+              {isTop ? <circle cx={x} cy={y} r={dotR + tier.extra} fill={`url(#${tier.id})`} fillOpacity={tier.opacity} /> : null}
+              {isTop ? <circle cx={x} cy={y} r={dotR + 5} fill="none" stroke={tier.color} strokeWidth="1" strokeOpacity={tier.opacity} /> : null}
+              {isTop ? <path d={sparkle(x, y, dotR + 9)} fill="none" stroke={tier.color} strokeWidth="1" strokeOpacity={tier.opacity} strokeLinecap="round" /> : null}
+              {tick ? <path d={`M ${x},${(y - dotR - 7).toFixed(1)} L ${x},${(y - dotR - 2).toFixed(1)} M ${(x - 2.5).toFixed(1)},${(y - dotR - 4.5).toFixed(1)} L ${(x + 2.5).toFixed(1)},${(y - dotR - 4.5).toFixed(1)}`} stroke="rgba(216,178,92,0.4)" strokeWidth="0.8" strokeLinecap="round" /> : null}
+              <circle cx={x} cy={y} r={dotR} fill={isTop || it.v >= 50 ? GOLD : "#EDE7D3"} fillOpacity={op} />
+              <text x={lx} y={ly} textAnchor={anchor} dominantBaseline="middle" fontSize="11" fill={isTop ? GOLD : INK} fillOpacity={isTop ? 1 : 0.75} fontFamily={SERIF}>{it.label}</text>
+            </g>
+          );
+        })
+      )}
+    </svg>
+  );
+}
+
+// 封面天文环（浑天仪）：三圈同心圆环，半径呼应星图 170/115/60 的比例。
+// 入场：圆环依次描绘（stroke-dashoffset，约 1 秒）→ 整组极缓慢旋转 → 标签淡入 → 标题淡入；
+// 总时长 1.5 秒内；prefers-reduced-motion 时直接显示最终态，无动画。
+const ARM_CX = 160, ARM_CY = 160;
+const ARM_RINGS = [
+  { r: 136, label: "八维", stars: [[-30, 3.5], [150, 2.5]] as [number, number][] },
+  { r: 92, label: "九型", stars: [[60, 3], [210, 2.5]] as [number, number][] },
+  { r: 48, label: "本能", stars: [[-90, 3]] as [number, number][] },
+];
+function Armillary(props: { reduced: boolean }) {
+  const reduced = props.reduced;
+  return (
+    <svg viewBox="0 0 320 320" role="img" aria-label="天文环" style={{ display: "block", width: "min(300px, 78vw)", height: "auto", margin: "10px auto 0" }}>
+      <style>{`@keyframes armDraw { to { stroke-dashoffset: 0; } } @keyframes armSpin { to { transform: rotate(360deg); } } @keyframes armFade { from { opacity: 0; } to { opacity: 1; } }`}</style>
+      <g style={reduced ? undefined : { transformBox: "view-box", transformOrigin: "160px 160px", animation: "armSpin 240s linear 1s infinite" }}>
+        {ARM_RINGS.map((ring, ri) => {
+          const C = 2 * Math.PI * ring.r;
+          return (
+            <circle key={`r${ri}`} cx={ARM_CX} cy={ARM_CY} r={ring.r} fill="none" stroke="rgba(216,178,92,0.45)" strokeWidth="1"
+              style={reduced ? undefined : { strokeDasharray: C, strokeDashoffset: C, animation: `armDraw 0.35s ease-out ${ri * 0.3}s forwards` }} />
+          );
+        })}
+        {ARM_RINGS.map((ring, ri) => ring.stars.map(([deg, sr], si) => {
+          const a = (deg * Math.PI) / 180;
+          return <circle key={`s${ri}-${si}`} cx={ARM_CX + ring.r * Math.cos(a)} cy={ARM_CY + ring.r * Math.sin(a)} r={sr} fill={GOLD} />;
+        }))}
+        {ARM_RINGS.map((ring, ri) => [45, 135, 225, 315].map((deg) => {
+          const a = (deg * Math.PI) / 180;
+          return <line key={`k${ri}-${deg}`} x1={ARM_CX + (ring.r - 4) * Math.cos(a)} y1={ARM_CY + (ring.r - 4) * Math.sin(a)} x2={ARM_CX + (ring.r + 4) * Math.cos(a)} y2={ARM_CY + (ring.r + 4) * Math.sin(a)} stroke="rgba(216,178,92,0.5)" strokeWidth="1" strokeLinecap="round" />;
+        }))}
+      </g>
+      <circle cx={ARM_CX} cy={ARM_CY} r={3.5} fill={GOLD} />
+      {ARM_RINGS.map((ring, ri) => (
+        <text key={`t${ri}`} x={ARM_CX} y={ARM_CY - ring.r + 16} textAnchor="middle" dominantBaseline="middle" fontSize="12" fontStyle="italic" fill={GOLD} fontFamily={SERIF}
+          style={reduced ? undefined : { opacity: 0, animation: `armFade 0.4s ease-out ${1.05 + ri * 0.08}s forwards` }}>{ring.label}</text>
+      ))}
+    </svg>
+  );
+}
 
 type Shot = { url: string; blob: Blob };
 type StepItem = { kind: "q"; q: Item; opts: { i: number; t: string }[] } | { kind: "p"; p: PItem; n: number };
@@ -395,6 +618,8 @@ export default function App() {
   const [age, setAge] = useState<string>("");
   const [shareFlash, setShareFlash] = useState<string>("");
   const [shot, setShot] = useState<Shot | null>(null);
+  const [soundOn, setSoundOn] = useState<boolean>(() => soundEnabled());
+  const [reducedMotion] = useState<boolean>(() => prefersReduced());
   const order = useMemo(() => { const r = rng(seed); return shuffle(Q, r).map((q: Item) => ({ q, opts: shuffle(q.o.map((o: [string, string], i: number) => ({ i, t: o[1] })), r) })); }, [seed]);
   const R = useMemo(() => score(ans), [ans]);
   const poOrder = useMemo(() => { const r = rng(seed + 7); return shuffle(PO, r).map((p: PItem) => (r() < 0.5 ? { ...p, o: [p.o[1], p.o[0]] as [string, string][] } : p)); }, [seed]);
@@ -458,13 +683,15 @@ export default function App() {
   const unanswered = seq.map((s: StepItem, i: number) => (ans[stepId(s)] === undefined ? i : -1)).filter((i: number) => i >= 0);
   const cur = Math.min(step, Math.max(0, seq.length - 1));
   useEffect(() => { if (stage === "q" && step >= seq.length) { setStage("result"); setStep(Math.max(0, seq.length - 1)); } }, [stage, step, seq.length]);
+  useEffect(() => { if (stage === "result") playReveal(); }, [stage]);
   useEffect(() => { const el = topRef.current; if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: "start" }); }, [stage, step]);
   useEffect(() => () => stopTimer(), []);
-  const go = (i: number): void => { stopTimer(); setStep(i); setStage("q"); };
-  const next = (): void => { stopTimer(); setStep(cur + 1); };
-  const prev = (): void => { stopTimer(); if (cur > 0) setStep(cur - 1); else setStage("cover"); };
-  const pick = (id: string, v: number | string, adv: boolean): void => {
+  const go = (i: number): void => { stopTimer(); playFlip(); setStep(i); setStage("q"); };
+  const next = (): void => { stopTimer(); playFlip(); setStep(cur + 1); };
+  const prev = (): void => { stopTimer(); playFlip(); if (cur > 0) setStep(cur - 1); else setStage("cover"); };
+  const pick = (id: string, v: number | string, adv: boolean, note?: number): void => {
     const off = ans[id] === v; setA(id, v); stopTimer();
+    if (!off && note !== undefined) playNote(note);
     if (!off && adv) { const from = cur; timer.current = window.setTimeout(() => { timer.current = null; setStep(from + 1); }, 260); }
   };
 
@@ -554,21 +781,31 @@ export default function App() {
 
   return (
     <Page title="人设类型学合测 · 轴向版" lang="zh-Hans" width="column" summary={`八维按功能轴和主导方向排栈，九型和本能按动机选最像的一项、按选中率计分。共 ${Q.length} 题，测完可生成一张结果分享图。`}>
-      <div ref={topRef} style={{ background: PAPER, color: INK, fontFamily: SERIF, border: `1px solid ${INK}`, boxShadow: `inset 0 0 0 6px ${PAPER}, inset 0 0 0 7px rgba(29,42,104,0.45)`, padding: "26px clamp(16px, 5vw, 44px) 34px", maxWidth: 800, margin: "0 auto", boxSizing: "border-box", lineHeight: 1.6 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "4px 16px" }}>
+      <Starfield />
+      <div ref={topRef} style={{ position: "relative", zIndex: 1, background: "rgba(23,30,66,0.92)", color: INK, fontFamily: SERIF, border: `1px solid ${GOLD}`, boxShadow: `inset 0 0 0 6px ${PAPER}, inset 0 0 0 7px rgba(216,178,92,0.4)`, padding: "26px clamp(16px, 5vw, 44px) 34px", maxWidth: 800, margin: "0 auto", boxSizing: "border-box", lineHeight: 1.6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "4px 16px" }}>
           <span style={{ fontSize: 12.5, letterSpacing: "0.26em" }}>人设类型学合测 · 轴向版</span>
-          <span style={{ fontSize: 12.5, letterSpacing: "0.18em" }}>{stage === "q" ? `第 ${cur + 1} / ${seq.length} 题 · 已答 ${R.done}/${Q.length}` : `已答 ${R.done}/${Q.length}`}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 12.5, letterSpacing: "0.18em" }}>{stage === "q" ? `第 ${cur + 1} / ${seq.length} 题 · 已答 ${R.done}/${Q.length}` : `已答 ${R.done}/${Q.length}`}</span>
+            <button type="button" onClick={() => { const nx = !soundOn; setSoundEnabled(nx); setSoundOn(nx); }} style={{ padding: "4px 10px", borderRadius: 0, border: `1px solid ${GOLD}`, background: "transparent", color: INK, fontFamily: SERIF, fontSize: 12.5, letterSpacing: "0.12em", cursor: "pointer" }}>{`音效 ${soundOn ? "开" : "关"}`}</button>
+          </span>
         </div>
-        <div style={{ marginTop: 8, height: 1, background: INK }} />
-        <div style={{ height: 2, background: "rgba(29,42,104,0.08)" }}><div style={{ width: `${pct}%`, height: 2, background: SUN }} /></div>
+        <div style={{ marginTop: 8, height: 1, background: GOLD }} />
+        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }} aria-label={`进度 ${pct}%`}>
+          {Array.from({ length: 24 }, (_, i) => {
+            const lit = pct >= ((i + 1) / 24) * 100;
+            return <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: lit ? SUN : "rgba(216,178,92,0.25)", boxShadow: lit ? "0 0 6px rgba(232,200,120,0.8)" : "none" }} />;
+          })}
+        </div>
 
         {stage === "cover" ? (
         <div>
         <div style={{ padding: "34px 0 6px" }}>
+          <Armillary reduced={reducedMotion} />
           <div style={tag}>TYPOLOGIA · EDITIO AXIALIS · Nº 01</div>
-          <div style={{ fontSize: "clamp(40px, 9vw, 66px)", lineHeight: 1.08, marginTop: 14, letterSpacing: "0.02em" }}>人设类型学合测</div>
+          <div style={{ fontSize: "clamp(40px, 9vw, 66px)", lineHeight: 1.08, marginTop: 14, letterSpacing: "0.02em", ...(reducedMotion ? {} : { opacity: 0, animation: "armFade 0.5s ease-out 0.9s forwards" }) }}>人设类型学合测</div>
           <div style={{ fontSize: "clamp(22px, 4.6vw, 32px)", fontStyle: "italic", lineHeight: 1.25, color: MUTED, marginTop: 6 }}>Specimen personae, axibus ordinatum</div>
-          <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${HAIR}`, fontSize: 15.5, color: INK }}>{`同一场景、几个方向正面竞争：八维按功能轴和主导方向排栈，九型和本能按动机选最像的一项、按选中率计分。共 ${Q.length} 题，每次重置都会打乱题目和选项顺序。测完后可以生成结果分享图。`}</div>
+          <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${HAIR}`, fontSize: 15.5, color: INK }}>{`三重星环，一次测完：同一场景、几个方向正面竞争，按你最像的做法计分。共 ${Q.length} 题，每次重置都会打乱题目和选项顺序。测完后可以生成结果分享图。`}</div>
         </div>
 
         {head("§ I", "怎么答", "modus respondendi")}
@@ -597,6 +834,15 @@ export default function App() {
           const isI = s.kind === "q" && s.q.g === "i";
           const three = s.kind === "q" && (s.q.g === "e" || s.q.g === "i");
           const last = cur >= seq.length - 1;
+          // 本题按钮按出现顺序依次取音：选项 do/re/mi/fa，其余 chip 接着 sol/la/do′…顺延
+          const nOpt = s.kind === "q" ? s.opts.length : s.p.o.length;
+          const nLeast = isI && s.kind === "q" && typeof a === "number" ? s.opts.filter((op: { i: number; t: string }) => op.i !== a).length : 0;
+          let nbi = nOpt + nLeast;
+          const bottomNote = (): number => { const n = noteAt(nbi); nbi += 1; return n; };
+          const noteFun = s.kind === "q" && s.q.st ? bottomNote() : 0;
+          const noteComfy = s.kind === "q" && s.q.st ? bottomNote() : 0;
+          const noteIdk = three ? bottomNote() : 0;
+          const noteNone = bottomNote();
           return (
             <div style={{ minHeight: 420 }}>
               <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "baseline", gap: "2px 12px", marginTop: 30 }}>
@@ -609,26 +855,26 @@ export default function App() {
               <div style={{ marginTop: isI ? 2 : 12 }}>
                 {s.kind === "q"
                   ? s.opts.map((op: { i: number; t: string }, j: number) => (
-                      <button type="button" key={op.i} onClick={() => pick(id, op.i, !isI)} style={opt(a === op.i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"abcd"[j]}.`}</span>{op.t}</button>
+                      <button type="button" key={op.i} onClick={() => pick(id, op.i, !isI, noteAt(j))} style={opt(a === op.i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"abcd"[j]}.`}</span>{op.t}</button>
                     ))
                   : s.p.o.map((o: [string, string], i: number) => (
-                      <button type="button" key={i} onClick={() => pick(id, i, true)} style={opt(a === i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"ab"[i]}.`}</span>{o[1]}</button>
+                      <button type="button" key={i} onClick={() => pick(id, i, true, noteAt(i))} style={opt(a === i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"ab"[i]}.`}</span>{o[1]}</button>
                     ))}
               </div>
               {isI && s.kind === "q" && typeof a === "number" ? (
-                <div style={{ marginTop: 16, padding: "12px 14px", border: `1px solid ${INK}`, background: PAPER2 }}>
+                <div style={{ marginTop: 16, padding: "12px 14px", border: `1px solid ${GOLD}`, background: PAPER2 }}>
                   <div style={{ fontSize: 12, letterSpacing: "0.2em", color: DIM }}>第二步 · 最不像（可选）</div>
                   <div style={{ fontSize: 13.5, color: MUTED, marginTop: 2 }}>本能题选完「最像」不会自动翻页。点一个最不像的，会直接进入下一题；不想选就点「下一题」。</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                    {s.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }) => <button type="button" key={"l" + op.i} onClick={() => pick(id + "_l", op.i, true)} style={chip(ans[id + "_l"] === op.i)}>{`最不像：${op.t}`}</button>)}
+                    {s.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }, j: number) => <button type="button" key={"l" + op.i} onClick={() => pick(id + "_l", op.i, true, noteAt(nOpt + j))} style={chip(ans[id + "_l"] === op.i)}>{`最不像：${op.t}`}</button>)}
                   </div>
                 </div>
               ) : null}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "fun", true)} style={chip(a === "fun")}>我做更有意思那个</button> : null}
-                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "comfy", true)} style={chip(a === "comfy")}>我做更让我舒服那个</button> : null}
-                {three ? <button type="button" onClick={() => pick(id, "idk", true)} style={chip(a === "idk")}>我不知道</button> : null}
-                <button type="button" onClick={() => pick(id, "none", true)} style={chip(a === "none")}>{s.kind === "q" ? "都不是" : "都不像"}</button>
+                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "fun", true, noteFun)} style={chip(a === "fun")}>我做更有意思那个</button> : null}
+                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "comfy", true, noteComfy)} style={chip(a === "comfy")}>我做更让我舒服那个</button> : null}
+                {three ? <button type="button" onClick={() => pick(id, "idk", true, noteIdk)} style={chip(a === "idk")}>我不知道</button> : null}
+                <button type="button" onClick={() => pick(id, "none", true, noteNone)} style={chip(a === "none")}>{s.kind === "q" ? "都不是" : "都不像"}</button>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginTop: 28, paddingTop: 14, borderTop: `1px solid ${HAIR}` }}>
                 <button type="button" onClick={prev} style={pbtn(false)}>{cur === 0 ? "← 回到封面" : "← 上一题"}</button>
@@ -651,18 +897,19 @@ export default function App() {
           </div>
         ) : null}
         {head("PL. I", "结果标本", "specimen")}
-        <div style={{ marginTop: 16, border: `1px solid ${INK}`, padding: 5 }}>
-          <div style={{ border: `1px solid rgba(29,42,104,0.45)`, padding: "18px clamp(14px, 4vw, 32px) 22px", background: PAPER }}>
+        <div style={{ marginTop: 16, border: `1px solid ${GOLD}`, padding: 5 }}>
+          <div style={{ border: `1px solid rgba(216,178,92,0.4)`, padding: "18px clamp(14px, 4vw, 32px) 22px", background: PAPER }}>
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", fontSize: 11.5, letterSpacing: "0.22em" }}>
               <span>人设类型学合测 · 轴向版</span><span>PL. I</span>
             </div>
-            <div style={{ height: 1, background: INK, marginTop: 6 }} />
+            <div style={{ height: 1, background: GOLD, marginTop: 6 }} />
+            <StarMap f={R.f} e={R.e} i={R.i} stack={top.s} />
             {name.trim() ? <div style={{ textAlign: "center", fontSize: 21, color: MUTED, marginTop: 22, wordBreak: "break-word" }}>{name.trim()}</div> : null}
             <div style={{ textAlign: "center", fontSize: code.length > 4 ? "clamp(38px, 10vw, 68px)" : "clamp(60px, 16vw, 116px)", lineHeight: 1.05, letterSpacing: "0.03em", marginTop: name.trim() ? 6 : 26, color: code ? INK : DIM, wordBreak: "break-word" }}>{code || "· · · ·"}</div>
             {stack ? <div style={{ textAlign: "center", fontStyle: "italic", fontSize: 19, color: MUTED, marginTop: 6 }}>{stack}</div> : null}
             <div style={{ textAlign: "center", fontSize: 12, letterSpacing: "0.2em", color: DIM, marginTop: 8 }}>{note}</div>
             <div style={{ width: 96, height: 2, background: SUN, margin: "16px auto 0" }} />
-            <div style={{ marginTop: 22, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, height: 3 }} />
+            <div style={{ marginTop: 22, borderTop: `1px solid ${GOLD}`, borderBottom: `1px solid ${GOLD}`, height: 3 }} />
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", marginTop: 14 }}>
               <span style={{ fontSize: 12, letterSpacing: "0.2em" }}>FIG. I · 功能轴</span><span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>axes functionum</span>
             </div>
@@ -670,13 +917,13 @@ export default function App() {
             <div style={{ fontSize: 13, color: MUTED, marginTop: 8, lineHeight: 1.6 }}>{`八维：${mbti}（领先其他类型 ${gapO} 分、领先内外向孪生 ${gapW} 分；${locked ? "已锁" : "要求 5 分和 3 分"}）`}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 28px", marginTop: 18 }}>
               <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", paddingBottom: 4, borderBottom: `1px solid ${INK}` }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", paddingBottom: 4, borderBottom: `1px solid ${GOLD}` }}>
                   <span style={{ fontSize: 12, letterSpacing: "0.2em" }}>FIG. II · 九型</span><span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>enneagramma</span>
                 </div>
                 {enn.map((x: Fact) => fact(x.label, x.value))}
               </div>
               <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", paddingBottom: 4, borderBottom: `1px solid ${INK}` }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", paddingBottom: 4, borderBottom: `1px solid ${GOLD}` }}>
                   <span style={{ fontSize: 12, letterSpacing: "0.2em" }}>FIG. III · 本能</span><span style={{ fontStyle: "italic", fontSize: 13, color: DIM }}>instinctus</span>
                 </div>
                 {ins.map((x: Fact) => fact(x.label, x.value))}
@@ -694,7 +941,7 @@ export default function App() {
                 <div style={{ fontSize: 14.5, lineHeight: 1.6, marginTop: 6, fontStyle: "italic", wordBreak: "break-word" }}>{ageNote}</div>
               </div>
             ) : null}
-            <div style={{ height: 1, background: INK, marginTop: 20 }} />
+            <div style={{ height: 1, background: GOLD, marginTop: 20 }} />
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", marginTop: 8, fontSize: 12.5, color: DIM }}>
               <span style={{ fontStyle: "italic" }}>{SITE}</span><span>结果只在本机计算，不上传</span>
             </div>
@@ -703,13 +950,13 @@ export default function App() {
 
         {head("§ IV", "分享图", "imago communicanda", "结果不会存到网上。生成一张图后，可以下载或发给别人；想写角色名的话，会出现在图上。")}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 14 }}>
-          <input value={name} onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)} placeholder="角色名（可选）" aria-label="角色名" style={{ flex: "1 1 180px", minWidth: 0, padding: "8px 2px", border: "none", borderBottom: `1px solid ${INK}`, borderRadius: 0, background: "transparent", color: INK, fontFamily: SERIF, fontSize: 16, outline: "none" }} />
+          <input value={name} onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)} placeholder="角色名（可选）" aria-label="角色名" style={{ flex: "1 1 180px", minWidth: 0, padding: "8px 2px", border: "none", borderBottom: `1px solid ${GOLD}`, borderRadius: 0, background: "transparent", color: INK, fontFamily: SERIF, fontSize: 16, outline: "none" }} />
           <button type="button" onClick={generateCard} style={pbtn(true)}>生成分享图</button>
           {shot ? <button type="button" onClick={downloadCard} style={pbtn(false)}>下载图片</button> : null}
           {shot ? <button type="button" onClick={shareImage} style={pbtn(false)}>分享</button> : null}
         </div>
         {shareFlash ? <div style={{ color: shareFlash.startsWith("图已") ? MUTED : WARN, fontSize: 13, marginTop: 8, wordBreak: "break-word" }}>{shareFlash}</div> : null}
-        {shot ? <img src={shot.url} alt="测试结果分享图" style={{ display: "block", width: "100%", height: "auto", marginTop: 14, border: `1px solid ${INK}` }} /> : null}
+        {shot ? <img src={shot.url} alt="测试结果分享图" style={{ display: "block", width: "100%", height: "auto", marginTop: 14, border: `1px solid ${GOLD}` }} /> : null}
 
         {needPairs.length > 0 ? head("附录 ·", "九型加赛对局", "certamen decretorium", "加赛只用来分胜负，不改选中率") : null}
         {needPairs.length > 0 ? tbl(["对局", "比分", "胜方"], needPairs.map((k: string) => { const [a, b] = k.split("-"); const r = h2h(a, b); return [`${nm(a)} 对 ${nm(b)}`, `${r.x} : ${r.y}`, r.x === r.y ? "平" : `${nm(r.x > r.y ? a : b)} 号`]; }), 1) : null}
@@ -728,7 +975,7 @@ export default function App() {
         {tbl(["本能", "分", "最像", "最不像", "都不是", "不知道", "出现"], iS.map((k: string) => [k, String(R.i[k]), String(R.is[k] || 0), String(R.il[k] || 0), String(R.inn[k] || 0), String(R.ik[k] || 0), String((R.ia[k] || 0) + (R.ik[k] || 0))]), 1)}
 
         {head("附录 E", "角色人设速写", "adumbratio", "可直接复制")}
-        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: SERIF, fontSize: 14.5, lineHeight: 1.7, color: INK, padding: "12px 14px", marginTop: 12, border: `1px solid ${INK}`, background: PAPER2, userSelect: "all" }}>{sketch}</div>
+        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: SERIF, fontSize: 14.5, lineHeight: 1.7, color: INK, padding: "12px 14px", marginTop: 12, border: `1px solid ${GOLD}`, background: PAPER2, userSelect: "all" }}>{sketch}</div>
 
         {head("附录 F", "出题参考", "fontes")}
         <div style={{ marginTop: 8 }}>
@@ -741,7 +988,7 @@ export default function App() {
           ].map((l: { title: string; site: string; href: string }, i: number) => (
             <a key={l.href} href={l.href} target="_blank" rel="noreferrer" style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "baseline", padding: "9px 0", borderBottom: `1px solid ${HAIR}`, color: INK, textDecoration: "none" }}>
               <span style={{ fontStyle: "italic", color: DIM, fontSize: 14 }}>{`${i + 1}.`}</span>
-              <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 15, borderBottom: `1px solid rgba(29,42,104,0.35)` }}>{l.title}</span>
+              <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 15, borderBottom: `1px solid rgba(216,178,92,0.35)` }}>{l.title}</span>
               <span style={{ fontStyle: "italic", color: DIM, fontSize: 13 }}>{l.site}</span>
             </a>
           ))}
@@ -755,7 +1002,7 @@ export default function App() {
           </div>
         ) : null}
 
-        <div style={{ marginTop: 40, borderTop: `1px solid ${INK}`, borderBottom: `1px solid ${INK}`, height: 3 }} />
+        <div style={{ marginTop: 40, borderTop: `1px solid ${GOLD}`, borderBottom: `1px solid ${GOLD}`, height: 3 }} />
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 12px", marginTop: 10, fontSize: 12, letterSpacing: "0.16em", color: DIM }}>
           <span>{SITE}</span><span>不保存 · 不上传</span>
         </div>
