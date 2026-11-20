@@ -84,6 +84,19 @@ export function playNote(freq: number): void {
   tone(freq, 0, 0.35, "sine", 0.5);
 }
 
+/** 全局弹琴：C 大调音阶，C4–C6 共 15 个音（两个八度 + 收尾的 C6），左低右高 */
+export const PIANO_SCALE = [261.63, 293.66, 329.63, 349.23, 392.0, 440.0, 493.88, 523.25, 587.33, 659.25, 698.46, 783.99, 880.0, 987.77, 1046.5];
+/** 按横向位置取音：x 占页面宽度的比例映射到 15 个音；同一 x 永远是同一个音 */
+export function pianoNoteAt(clientX: number, width: number): number {
+  if (!width || width <= 0 || !Number.isFinite(clientX)) return PIANO_SCALE[7];
+  const i = Math.floor((clientX / width) * PIANO_SCALE.length);
+  return PIANO_SCALE[Math.max(0, Math.min(PIANO_SCALE.length - 1, i))];
+}
+/** 全局点按发音：复用 playNote（自带音效开关检查，关了就不响） */
+export function playPiano(clientX: number, width: number): void {
+  playNote(pianoNoteAt(clientX, width));
+}
+
 /** 翻页 flip：轻柔的三角波下滑 */
 export function playFlip(): void {
   if (!soundEnabled()) return;

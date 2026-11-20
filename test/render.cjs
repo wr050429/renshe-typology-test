@@ -5,6 +5,8 @@
 // 本测试保证：构建产物能渲染出封面，且单测本能能走通到结果页。
 // 注意：jsdom 不做布局，390px 横向溢出不在此测，由真机/浏览器复核；
 // jsdom 也没有 canvas 2d/toBlob，点“生成分享图”只断言不抛错，不测出图。
+// 全局弹琴检查用假 AudioContext：只记录代码请求的音高（frequency.setValueAtTime
+// 的参数），不断言真音频；能断言“点按触发了发音”和“音高随横向位置变化”。
 const fs = require("fs");
 const path = require("path");
 const { JSDOM } = require("jsdom");
@@ -22,6 +24,7 @@ const check = (name, ok, extra = "") => {
 
 function makeDom(width) {
   const errors = [];
+  const freqs = [];
   const dom = new JSDOM(html, {
     url: "https://wr050429.github.io/renshe-typology-test/",
     runScripts: "outside-only",
@@ -31,6 +34,13 @@ function makeDom(width) {
   const { window } = dom;
   window.console.error = (...a) => errors.push(a.map(String).join(" "));
   window.addEventListener("error", (e) => errors.push("window.onerror: " + e.message));
+  // 假 AudioContext：只记录每次 tone() 请求的音高，供弹琴检查断言调用与音高
+  window.AudioContext = class {
+    constructor() { this.state = "running"; this.currentTime = 0; this.destination = {}; }
+    createGain() { return { gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; }
+    createOscillator() { return { type: "", frequency: { setValueAtTime(f) { freqs.push(f); }, exponentialRampToValueAtTime() {} }, connect() {}, start() {}, stop() {} }; }
+    resume() { return Promise.resolve(); }
+  };
   window.HTMLCanvasElement.prototype.getContext = function () {
     return new Proxy(
       {},
@@ -53,7 +63,7 @@ function makeDom(width) {
   const btn = (label) =>
     [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes(label));
   const text = () => window.document.body.textContent;
-  return { dom, window, errors, btn, text };
+  return { dom, window, errors, btn, text, tones: () => freqs.length, lastFreq: () => freqs[freqs.length - 1] };
 }
 
 (async () => {
@@ -70,6 +80,17 @@ function makeDom(width) {
   check("封面题量 101 题", d.text().includes("完整合测 101 题"));
   check("音效开关", !!d.btn("音效"));
   check("星空画布", !!d.window.document.querySelector("canvas"));
+
+  // 全局弹琴：空白处 pointerdown 按横向位置发音（左低右高，C4–C6）
+  const tones0 = d.tones();
+  const tap = (x) => d.window.document.body.dispatchEvent(new d.window.MouseEvent("pointerdown", { bubbles: true, clientX: x }));
+  const vw = d.window.innerWidth; // jsdom 的 innerWidth 未必等于 viewport 设定，按实际值算点位
+  tap(10);
+  check("全局弹琴：左端点按发 C4", d.tones() === tones0 + 1 && d.lastFreq() === 261.63, "freq=" + d.lastFreq());
+  tap(Math.floor(vw / 2));
+  check("全局弹琴：中间点按发 C5", d.tones() === tones0 + 2 && d.lastFreq() === 523.25, "freq=" + d.lastFreq());
+  tap(vw - 10);
+  check("全局弹琴：右端点按发 C6", d.tones() === tones0 + 3 && d.lastFreq() === 1046.5, "freq=" + d.lastFreq());
 
   // 单测本能走通：18 题（最像 + 最不像）→ 结果页
   d.btn("单测本能").click();
@@ -108,6 +129,25 @@ function makeDom(width) {
   await sleep(800);
   check("手机封面渲染", m.text().includes("人设类型学合测"));
   check("手机无报错", m.errors.length === 0, m.errors.join(" | "));
+
+  // 选项按钮不叠加全局音：pointerdown 落在选项上不发全局音，点击仍有自己的顺序单音
+  m.btn("单测本能").click();
+  await sleep(300);
+  const mOpt = [...m.window.document.querySelectorAll("button")].find((b) =>
+    /^a\./.test(b.textContent.trim())
+  );
+  if (!mOpt) {
+    check("手机本能第一题有选项", false);
+  } else {
+    const t0 = m.tones();
+    mOpt.dispatchEvent(new m.window.MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+    check("选项 pointerdown 不叠加全局音", m.tones() === t0, "tones=" + m.tones());
+    mOpt.click();
+    await sleep(120);
+    check("选项点击仍有自己的顺序单音", m.tones() === t0 + 1 && m.lastFreq() === 523.25, "freq=" + m.lastFreq());
+    m.window.document.body.dispatchEvent(new m.window.MouseEvent("pointerdown", { bubbles: true, clientX: 10 }));
+    check("手机空白处点按发 C4", m.tones() === t0 + 2 && m.lastFreq() === 261.63, "freq=" + m.lastFreq());
+  }
   m.dom.window.close();
 
   console.log(failures === 0 ? "\nall render tests passed" : `\n${failures} render test(s) failed`);

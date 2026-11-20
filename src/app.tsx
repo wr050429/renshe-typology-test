@@ -1,6 +1,6 @@
 import { Page, useState, useMemo, useEffect, useRef, type ChangeEvent, type CSSProperties } from "./kit";
 import Starfield from "./starfield";
-import { soundEnabled, setSoundEnabled, playFlip, playReveal, playNote, noteAt } from "./sound";
+import { soundEnabled, setSoundEnabled, playFlip, playReveal, playNote, noteAt, playPiano } from "./sound";
 import {
   Q, PO, FN, AXN, EN, INS, GL, AGES, DISCLAIMER, MODE_META,
   type Ans, type Item, type PItem, type Fact, type Mode, type Presentation,
@@ -521,6 +521,20 @@ export default function App() {
   const cur = Math.min(step, Math.max(0, seq.length - 1));
   useEffect(() => { if (stage === "q" && step >= seq.length) { setStage("result"); setStep(Math.max(0, seq.length - 1)); } }, [stage, step, seq.length]);
   useEffect(() => { if (stage === "result") playReveal(); }, [stage]);
+  // 全局触屏弹琴：页面任意位置 pointerdown 都按横向位置发一个钢琴音
+  // （左低右高，C 大调 C4–C6 共 15 个音，同一 x 永远是同一个音，能弹旋律）。
+  // 答题选项按钮自带顺序单音，用 data-opt 标记，全局处理跳过它们，
+  // 避免一个点击响两声；其余按钮、空白处、封面、结果页都走全局音。
+  // 音效开关在 playNote 里统一检查，关了就全静音。
+  useEffect(() => {
+    const onPointer = (e: PointerEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && typeof t.closest === "function" && t.closest("[data-opt]")) return;
+      playPiano(e.clientX, window.innerWidth);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    return () => document.removeEventListener("pointerdown", onPointer);
+  }, []);
   useEffect(() => { const el = topRef.current; if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: "start" }); }, [stage, step]);
   useEffect(() => () => stopTimer(), []);
   const go = (i: number): void => { stopTimer(); playFlip(); setStep(i); setStage("q"); };
@@ -668,10 +682,10 @@ export default function App() {
               <div style={{ marginTop: isI ? 2 : 12 }}>
                 {s.kind === "q"
                   ? s.opts.map((op: { i: number; t: string }, j: number) => (
-                      <button type="button" key={op.i} onClick={() => pick(id, op.i, !isI, noteAt(j))} style={opt(a === op.i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"abcd"[j]}.`}</span>{op.t}</button>
+                      <button type="button" key={op.i} data-opt onClick={() => pick(id, op.i, !isI, noteAt(j))} style={opt(a === op.i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"abcd"[j]}.`}</span>{op.t}</button>
                     ))
                   : s.p.o.map((o: [string, string], i: number) => (
-                      <button type="button" key={i} onClick={() => pick(id, i, true, noteAt(i))} style={opt(a === i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"ab"[i]}.`}</span>{o[1]}</button>
+                      <button type="button" key={i} data-opt onClick={() => pick(id, i, true, noteAt(i))} style={opt(a === i)}><span style={{ fontStyle: "italic", color: DIM, marginRight: 8 }}>{`${"ab"[i]}.`}</span>{o[1]}</button>
                     ))}
               </div>
               {isI && s.kind === "q" && typeof a === "number" ? (
@@ -679,15 +693,15 @@ export default function App() {
                   <div style={{ fontSize: 12, letterSpacing: "0.2em", color: DIM }}>第二步 · 最不像（可选）</div>
                   <div style={{ fontSize: 13.5, color: MUTED, marginTop: 2 }}>本能题选完「最像」不会自动翻页。点一个最不像的，会直接进入下一题；不想选就点「下一题」。</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                    {s.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }, j: number) => <button type="button" key={"l" + op.i} onClick={() => pick(id + "_l", op.i, true, noteAt(nOpt + j))} style={chip(ans[id + "_l"] === op.i)}>{`最不像：${op.t}`}</button>)}
+                    {s.opts.filter((op: { i: number; t: string }) => op.i !== a).map((op: { i: number; t: string }, j: number) => <button type="button" key={"l" + op.i} data-opt onClick={() => pick(id + "_l", op.i, true, noteAt(nOpt + j))} style={chip(ans[id + "_l"] === op.i)}>{`最不像：${op.t}`}</button>)}
                   </div>
                 </div>
               ) : null}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "fun", true, noteFun)} style={chip(a === "fun")}>我做更有意思那个</button> : null}
-                {s.kind === "q" && s.q.st ? <button type="button" onClick={() => pick(id, "comfy", true, noteComfy)} style={chip(a === "comfy")}>我做更让我舒服那个</button> : null}
-                {three ? <button type="button" onClick={() => pick(id, "idk", true, noteIdk)} style={chip(a === "idk")}>我不知道</button> : null}
-                <button type="button" onClick={() => pick(id, "none", true, noteNone)} style={chip(a === "none")}>{s.kind === "q" ? "都不是" : "都不像"}</button>
+                {s.kind === "q" && s.q.st ? <button type="button" data-opt onClick={() => pick(id, "fun", true, noteFun)} style={chip(a === "fun")}>我做更有意思那个</button> : null}
+                {s.kind === "q" && s.q.st ? <button type="button" data-opt onClick={() => pick(id, "comfy", true, noteComfy)} style={chip(a === "comfy")}>我做更让我舒服那个</button> : null}
+                {three ? <button type="button" data-opt onClick={() => pick(id, "idk", true, noteIdk)} style={chip(a === "idk")}>我不知道</button> : null}
+                <button type="button" data-opt onClick={() => pick(id, "none", true, noteNone)} style={chip(a === "none")}>{s.kind === "q" ? "都不是" : "都不像"}</button>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginTop: 28, paddingTop: 14, borderTop: `1px solid ${HAIR}` }}>
                 <button type="button" onClick={prev} style={pbtn(false)}>{cur === 0 ? "← 回到封面" : "← 上一题"}</button>
