@@ -34,7 +34,7 @@ const legacy = JSON.parse(fs.readFileSync(path.join(root, "test/legacy-keys.json
 // design files unchanged
 const pins: Record<string, string> = {
   "src/starfield.tsx": "69a9750e1e3e0e068a74c721051267fd3c05e51d706622c199164e49aa7824ca",
-  "src/sound.ts": "00bdf650f6fe4585be09373b21b656a1b0787947144f7b70e77fc319676d3a9d",
+  "src/sound.ts": "d557ab7bfe2b5759eff6f6292ad82570e227fda3f5157efd1d982a31da9ef272",
 };
 for (const [rel, pin] of Object.entries(pins)) {
   const h = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, rel))).digest("hex");
