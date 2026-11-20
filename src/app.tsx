@@ -20,6 +20,14 @@ type ShareCard = { name: string; code: string; stack: string; note: string; head
 
 function hashStr(s: string): number { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 
+// 种子随机数与洗牌（旧版 app.tsx 原样恢复：28a520d 重构时误删了这两段定义，
+// 但 paintCard、题目顺序、加赛顺序三处仍在调用，导致首屏渲染直接抛错白屏）
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function shuffle<T>(arr: T[], r: () => number): T[] { const b = arr.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = b[i]; b[i] = b[j]; b[j] = t; } return b; }
+
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const lines: string[] = [];
   text.split("\n").forEach((para: string) => {
